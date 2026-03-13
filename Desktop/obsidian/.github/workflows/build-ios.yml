@@ -1,0 +1,121 @@
+name: 📱 Build ObsidianOS + Amethyst iOS (.ipa)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build iOS IPA with Embedded Amethyst Module
+    runs-on: macos-latest
+
+    steps:
+      - name: 📦 Checkout ObsidianOS Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Checkout Amethyst-iOS
+        uses: actions/checkout@v4
+        with:
+          repository: AngelAuraMC/Amethyst-iOS
+          path: Amethyst-iOS
+          submodules: recursive # Necessario per scaricare i natives arm64 inclusi come sottomoduli
+
+      - name: 🍏 Install Amethyst Dependencies (CocoaPods)
+        run: |
+          cd Amethyst-iOS
+          pod install
+
+      - name: 🏗️ Compile Amethyst Framework
+        run: |
+          cd Amethyst-iOS
+          
+          # Amethyst usa workspace per i pods o project normale? Cerca.
+          if ls | grep -q "\.xcworkspace"; then
+            WORKSPACE_NAME=$(ls | grep "\.xcworkspace" | head -n 1)
+            SCHEME_NAME=$(basename "$WORKSPACE_NAME" .xcworkspace)
+            BUILD_CMD="xcodebuild clean build -workspace $WORKSPACE_NAME"
+          else
+            PROJECT_NAME=$(ls | grep "\.xcodeproj" | head -n 1)
+            SCHEME_NAME=$(basename "$PROJECT_NAME" .xcodeproj)
+            BUILD_CMD="xcodebuild clean build -project $PROJECT_NAME"
+          fi
+          
+          # Iniettiamo le flag per sovrascrivere il Build Settings Xcode forzando la libreria condivisa
+          $BUILD_CMD \
+            -scheme "$SCHEME_NAME" \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT=$PWD/build \
+            MACH_O_TYPE=mh_dylib \
+            LD_DYLIB_INSTALL_NAME=@rpath/Amethyst.dylib \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=NO
+            
+      - name: 🚚 Inject Amethyst.framework into Expo Module
+        run: |
+          # Creiamo la cartella target nel nostro Local Expo Module scritto precedentemente
+          mkdir -p modules/amethyst/ios/Frameworks
+          
+          # Cerchiamo il framework compilato appena partorito da xcodebuild
+          FRAMEWORK_PATH=$(find Amethyst-iOS/build -name "Amethyst.framework" -type d | head -n 1)
+          
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            echo "ERRORE CRITICO: Amethyst.framework non trovato post-compilazione!"
+            exit 1
+          fi
+          
+          cp -R "$FRAMEWORK_PATH" modules/amethyst/ios/Frameworks/
+          echo "Framework 注入 completed: $FRAMEWORK_PATH"
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: 🔨 Install Expo & React Native Dependencies
+        run: npm ci
+
+      - name: 🛠️ Prebuild Expo iOS Project (Injecting Local Modules)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: 🍏 Install CocoaPods (Link Amethyst.framework)
+        run: |
+          cd ios
+          # Questo leggerà il nostro amethyst.podspec e farà l'Embed and Sign del framework
+          pod install
+
+      - name: 🏗️ Build Final ObsidianOS XCArchive
+        run: |
+          cd ios
+          WORKSPACE_NAME=$(ls | grep "\.xcworkspace" | head -n 1)
+          SCHEME_NAME=$(basename "$WORKSPACE_NAME" .xcworkspace)
+          
+          xcodebuild archive \
+            -workspace "$WORKSPACE_NAME" \
+            -scheme "$SCHEME_NAME" \
+            -configuration Release \
+            -archivePath $PWD/build/ObsidianOS.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: 📦 Package Sideload-Ready .ipa Payload
+        run: |
+          cd ios/build
+          mkdir -p Payload
+          
+          # Cerchiamo l'applicazione generata ObsidianOS.app
+          APP_DIR=$(ls ObsidianOS.xcarchive/Products/Applications/ | head -n 1)
+          cp -R "ObsidianOS.xcarchive/Products/Applications/$APP_DIR" Payload/
+          
+          # Comprimiamo brutalmente il payload. AltStore ignorerà il CODE_SIGNING mancante firmando al volo.
+          zip -r obsidian.ipa Payload
+
+      - name: 📤 Upload Native .ipa Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsidian
+          path: ios/build/obsidian.ipa
+          retention-days: 7
