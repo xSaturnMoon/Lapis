@@ -21,6 +21,26 @@ jobs:
       - name: Install tools
         run: brew install xcodegen ldid
 
+      - name: Download JRE17 for iOS
+        run: |
+          echo "=== Downloading OpenJDK 17 JRE for iOS ARM64 ==="
+          curl -L -o jre17.tar.xz \
+            "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre17-ca01427/jre17-arm64-20220817-release.tar.xz"
+          
+          echo "Download complete. Size:"
+          ls -la jre17.tar.xz
+          
+          echo "=== Extracting JRE ==="
+          mkdir -p jre-bundle
+          tar xf jre17.tar.xz -C jre-bundle/
+          
+          echo "=== JRE contents ==="
+          ls -la jre-bundle/
+          find jre-bundle -maxdepth 3 -type f | head -30
+          
+          rm -f jre17.tar.xz
+          echo "=== JRE ready ==="
+
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
 
@@ -43,11 +63,19 @@ jobs:
           
           if [ -z "$APP_PATH" ]; then
             echo "ERROR: Lapis.app not found"
-            find ./build -type d -maxdepth 5 || echo "No build dir"
             exit 1
           fi
           
           echo "Found app at: $APP_PATH"
+          
+          # Bundle JRE into the app's Documents template
+          # The JRE will be copied to Documents/Lapis/jre on first launch
+          if [ -d "jre-bundle" ]; then
+            echo "Bundling JRE into app..."
+            cp -r jre-bundle "$APP_PATH/jre"
+            echo "JRE bundled! Contents:"
+            ls -la "$APP_PATH/jre/" | head -10
+          fi
           
           # Sign with JIT entitlements
           ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
@@ -57,7 +85,7 @@ jobs:
           zip -r Lapis.ipa Payload
           rm -rf Payload
           
-          echo "IPA created successfully!"
+          echo "=== IPA created ==="
           ls -la Lapis.ipa
 
       - name: Upload IPA

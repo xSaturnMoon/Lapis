@@ -216,28 +216,10 @@ struct HomeView: View {
     private func startGameFlow(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
         
-        // Step 1: Check JRE
-        let jreDownloader = JREDownloader()
-        if !jreDownloader.isJREInstalled {
-            launchErrorText = """
-            Java Runtime (JRE) not installed.
-            
-            To play Minecraft, you need an OpenJDK 17 JRE for iOS.
-            
-            How to install:
-            1. Download from PojavLauncher's GitHub:
-               github.com/PojavLauncherTeam/android-openjdk-build-multiarch
-               → Releases → "JRE17 (JIT) for sandboxed iOS"
-            
-            2. Extract the .tar.xz file
-            
-            3. Place the extracted contents in:
-               Files → Lapis → jre/
-            
-            The folder should contain:
-               jre/lib/libjli.dylib
-               jre/bin/java
-            """
+        // Step 1: Ensure JRE is available
+        let jrePath = setupJRE()
+        if jrePath == nil {
+            launchErrorText = "Java Runtime (JRE) not found.\n\nThe JRE should be bundled with the app. Try reinstalling Lapis."
             showLaunchError = true
             return
         }
@@ -253,15 +235,39 @@ struct HomeView: View {
         }
     }
     
+    /// Find JRE: check Documents first, then app bundle. Copy from bundle if needed.
+    private func setupJRE() -> String? {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let docsJRE = docs.appendingPathComponent("Lapis/jre")
+        
+        // Check Documents/Lapis/jre first
+        if fm.fileExists(atPath: docsJRE.path) {
+            return docsJRE.path
+        }
+        
+        // Check app bundle
+        let bundlePath = Bundle.main.bundlePath
+        let bundleJRE = URL(fileURLWithPath: bundlePath).appendingPathComponent("jre")
+        
+        if fm.fileExists(atPath: bundleJRE.path) {
+            // Copy from bundle to Documents (writable)
+            try? fm.createDirectory(at: docsJRE.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.copyItem(at: bundleJRE, to: docsJRE)
+            return docsJRE.path
+        }
+        
+        return nil
+    }
+    
     private func launchGame() {
         guard let version = appState.selectedVersion,
               let mode = selectedInputMode else { return }
         
-        // Set JRE path from Documents
-        let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let jrePath = docs.appendingPathComponent("Lapis/jre").path
-        PojavBridge.setJavaHome(jrePath)
+        // Set JRE path
+        if let jrePath = setupJRE() {
+            PojavBridge.setJavaHome(jrePath)
+        }
         
         let launcher = GameLauncher(appState: appState)
         launcher.launchGame(
@@ -276,3 +282,4 @@ struct HomeView: View {
         }
     }
 }
+
