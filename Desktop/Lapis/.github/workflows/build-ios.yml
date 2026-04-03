@@ -1,0 +1,62 @@
+name: Build Lapis IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project Lapis.xcodeproj \
+            -scheme Lapis \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO | xcpretty || true
+
+      - name: Create IPA
+        run: |
+          # Find the .app
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Lapis.app" -type d | head -1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: Lapis.app not found"
+            exit 1
+          fi
+          
+          echo "Found app at: $APP_PATH"
+          
+          # Create Payload directory and package IPA
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r Lapis.ipa Payload
+          rm -rf Payload
+          
+          echo "IPA created successfully!"
+          ls -la Lapis.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lapis-IPA
+          path: Lapis.ipa
+          retention-days: 30
