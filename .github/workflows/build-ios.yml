@@ -77,7 +77,12 @@ jobs:
             ls -la "$APP_PATH/jre/" | head -10
           fi
           
-          # Sign with JIT entitlements
+          # Code sign all executables and dylibs in the JRE to prevent iOS from killing the app
+          # when dlopen() tries to load an unsigned library. This was the root cause of the crash.
+          echo "Signing JRE binaries..."
+          find "$APP_PATH/jre" -type f \( -name "*.dylib" -o -name "*.so" -o -path "*/bin/*" \) -exec ldid -S {} \;
+          
+          # Sign the main app executable with JIT entitlements
           ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
           
           mkdir -p Payload
