@@ -3,7 +3,6 @@ options:
   bundleIdPrefix: com.xsaturnmoon
   deploymentTarget:
     iOS: "16.0"
-  xcodeVersion: "15.0"
   generateEmptyDirectories: true
 
 settings:
@@ -22,30 +21,10 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: Lapis
-        type: group
     settings:
       base:
         INFOPLIST_FILE: Lapis/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.xsaturnmoon.lapis
         TARGETED_DEVICE_FAMILY: "1,2"
-        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
-    info:
-      path: Lapis/Info.plist
-      properties:
-        CFBundleName: Lapis
-        CFBundleDisplayName: Lapis
-        CFBundleIdentifier: com.xsaturnmoon.lapis
-        CFBundleVersion: "1"
-        CFBundleShortVersionString: "1.0.0"
-        CFBundlePackageType: APPL
-        CFBundleExecutable: Lapis
-        UILaunchScreen: {}
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
-        UISupportedInterfaceOrientations~ipad:
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
-        UIRequiresFullScreen: true

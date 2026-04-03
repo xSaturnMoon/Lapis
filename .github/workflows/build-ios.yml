@@ -18,8 +18,20 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Debug - List files
+        run: |
+          echo "=== Root ==="
+          ls -la
+          echo "=== Lapis/ ==="
+          ls -la Lapis/
+          echo "=== project.yml ==="
+          cat project.yml
+
       - name: Generate Xcode Project
-        run: xcodegen generate
+        run: |
+          xcodegen generate --spec project.yml
+          echo "=== Generated project ==="
+          ls -la *.xcodeproj || echo "No xcodeproj found!"
 
       - name: List Schemes
         run: xcodebuild -project Lapis.xcodeproj -list
@@ -42,19 +54,16 @@ jobs:
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "ERROR: Lapis.app not found. Listing build directory:"
-            find ./build -type d -maxdepth 5
+            echo "ERROR: Lapis.app not found. Build output:"
+            find ./build -type d -maxdepth 5 || echo "No build dir"
             exit 1
           fi
           
           echo "Found app at: $APP_PATH"
-          
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload
           rm -rf Payload
-          
-          echo "IPA created successfully!"
           ls -la Lapis.ipa
 
       - name: Upload IPA
