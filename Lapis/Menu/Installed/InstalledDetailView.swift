@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct InstalledDetailView: View {
-    let version: GameVersion
+    let version: InstalledVersion
     let onBack: () -> Void
     
     @State private var selectedTab: InstalledDetailTab = .mods
@@ -15,7 +15,6 @@ struct InstalledDetailView: View {
         VStack(spacing: 0) {
             // MARK: Header
             HStack(spacing: LapisTheme.Spacing.lg) {
-                // Back button
                 Button(action: onBack) {
                     Image(systemName: "arrow.left")
                         .font(.system(size: 14, weight: .semibold))
@@ -25,13 +24,12 @@ struct InstalledDetailView: View {
                 }
                 .buttonStyle(.plain)
                 
-                // Version title
                 VStack(alignment: .leading, spacing: 2) {
                     Text("MINECRAFT \(version.versionNumber)")
                         .font(.system(size: 15, weight: .black))
                         .foregroundColor(LapisTheme.Colors.textPrimary)
                     
-                    Text(version.loader.rawValue + " • " + version.modsFolderName)
+                    Text(version.loader.rawValue + " • " + version.folderName)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundColor(LapisTheme.Colors.textMuted)
                 }
@@ -74,7 +72,6 @@ struct InstalledDetailView: View {
                 .fill(LapisTheme.Colors.divider)
                 .frame(height: 1)
             
-            // MARK: Tab Content
             switch selectedTab {
             case .mods:
                 ModsListView(version: version)
@@ -85,24 +82,19 @@ struct InstalledDetailView: View {
     }
 }
 
-// MARK: - Mods List View
+// MARK: - Mods List View (reads REAL .jar files from disk)
 struct ModsListView: View {
-    let version: GameVersion
+    let version: InstalledVersion
+    @State private var mods: [InstalledMod] = []
     @State private var searchText: String = ""
     
-    // Sample mods for UI development
-    private let sampleMods: [InstalledMod] = [
-        InstalledMod(id: "1", name: "Fabric API", author: "modmuss50", version: "0.92.1+1.21.1", fileName: "fabric-api-0.92.1.jar", iconURL: nil, isEnabled: true),
-        InstalledMod(id: "2", name: "Sodium", author: "CaffeineMC", version: "0.5.8+mc1.21.1", fileName: "sodium-0.5.8.jar", iconURL: nil, isEnabled: true),
-        InstalledMod(id: "3", name: "Iris Shaders", author: "coderbot", version: "1.7.0+mc1.21.1", fileName: "iris-1.7.0.jar", iconURL: nil, isEnabled: true),
-        InstalledMod(id: "4", name: "Lithium", author: "CaffeineMC", version: "0.12.1+mc1.21.1", fileName: "lithium-0.12.1.jar", iconURL: nil, isEnabled: false),
-        InstalledMod(id: "5", name: "Entity Culling", author: "tr7zw", version: "1.6.2+mc1.21.1", fileName: "entity-culling-1.6.2.jar", iconURL: nil, isEnabled: true),
-        InstalledMod(id: "6", name: "ModMenu", author: "Terraformers", version: "11.0.1", fileName: "modmenu-11.0.1.jar", iconURL: nil, isEnabled: true),
-    ]
+    private var filteredMods: [InstalledMod] {
+        if searchText.isEmpty { return mods }
+        return mods.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search and counter
             HStack {
                 HStack(spacing: LapisTheme.Spacing.sm) {
                     Image(systemName: "magnifyingglass")
@@ -119,40 +111,101 @@ struct ModsListView: View {
                 
                 Spacer()
                 
-                Text("\(sampleMods.count) mods")
+                Text("\(mods.count) mods")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(LapisTheme.Colors.textMuted)
             }
             .padding(.horizontal, LapisTheme.Spacing.xxl)
             .padding(.vertical, LapisTheme.Spacing.md)
             
-            // Mod list
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: LapisTheme.Spacing.sm) {
-                    ForEach(sampleMods) { mod in
-                        ModRow(mod: mod)
-                    }
+            if mods.isEmpty {
+                Spacer()
+                VStack(spacing: LapisTheme.Spacing.md) {
+                    Image(systemName: "puzzlepiece")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
+                    Text("No mods installed")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(LapisTheme.Colors.textSecondary)
+                    Text("Use the Modrinth tab to find and install mods")
+                        .font(.system(size: 12))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
                 }
-                .padding(.horizontal, LapisTheme.Spacing.xxl)
-                .padding(.bottom, LapisTheme.Spacing.xxl)
+                Spacer()
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: LapisTheme.Spacing.sm) {
+                        ForEach(filteredMods) { mod in
+                            ModRow(mod: mod, version: version)
+                        }
+                    }
+                    .padding(.horizontal, LapisTheme.Spacing.xxl)
+                    .padding(.bottom, LapisTheme.Spacing.xxl)
+                }
             }
         }
+        .onAppear {
+            loadModsFromDisk()
+        }
+    }
+    
+    /// Read real .jar files from the version's mod folder
+    private func loadModsFromDisk() {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modsDir = docs.appendingPathComponent("Lapis/mods/\(version.folderName)")
+        
+        guard let files = try? fm.contentsOfDirectory(at: modsDir, includingPropertiesForKeys: [.fileSizeKey]) else {
+            mods = []
+            return
+        }
+        
+        mods = files
+            .filter { $0.pathExtension == "jar" }
+            .map { file in
+                let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                let name = file.deletingPathExtension().lastPathComponent
+                    .replacingOccurrences(of: "-", with: " ")
+                    .replacingOccurrences(of: "_", with: " ")
+                
+                // Check if it's a .jar.disabled file
+                let isEnabled = !file.lastPathComponent.hasSuffix(".disabled")
+                
+                return InstalledMod(
+                    id: file.lastPathComponent,
+                    name: name.capitalized,
+                    fileName: file.lastPathComponent,
+                    fileSize: Int64(size),
+                    isEnabled: isEnabled
+                )
+            }
+            .sorted { $0.name < $1.name }
     }
 }
 
 // MARK: - Single Mod Row
 struct ModRow: View {
     let mod: InstalledMod
+    let version: InstalledVersion
     @State private var isEnabled: Bool
     
-    init(mod: InstalledMod) {
+    init(mod: InstalledMod, version: InstalledVersion) {
         self.mod = mod
+        self.version = version
         _isEnabled = State(initialValue: mod.isEnabled)
+    }
+    
+    private var fileSizeString: String {
+        let kb = Double(mod.fileSize) / 1024
+        if kb > 1024 {
+            return String(format: "%.1f MB", kb / 1024)
+        }
+        return String(format: "%.0f KB", kb)
     }
     
     var body: some View {
         HStack(spacing: LapisTheme.Spacing.lg) {
-            // Mod icon placeholder
+            // Icon
             ZStack {
                 RoundedRectangle(cornerRadius: LapisTheme.Radius.small)
                     .fill(LapisTheme.Colors.surfaceLight)
@@ -163,42 +216,36 @@ struct ModRow: View {
                     .foregroundColor(LapisTheme.Colors.accent)
             }
             
-            // Info
             VStack(alignment: .leading, spacing: 2) {
                 Text(mod.name)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(LapisTheme.Colors.textPrimary)
                 
-                Text("By \(mod.author)")
-                    .font(.system(size: 11, weight: .medium))
+                Text(mod.fileName)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundColor(LapisTheme.Colors.textMuted)
+                    .lineLimit(1)
             }
             
             Spacer()
             
-            // Version badge
-            Text(mod.version)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+            Text(fileSizeString)
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(LapisTheme.Colors.textSecondary)
-                .padding(.horizontal, LapisTheme.Spacing.sm)
-                .padding(.vertical, LapisTheme.Spacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: LapisTheme.Radius.small)
-                        .fill(LapisTheme.Colors.surface)
-                )
             
-            // Enable/Disable toggle
             Toggle("", isOn: $isEnabled)
                 .labelsHidden()
                 .tint(LapisTheme.Colors.accent)
+                .onChange(of: isEnabled) { newValue in
+                    toggleMod(enabled: newValue)
+                }
             
-            // More options
             Button {
-                // Context menu: remove, update, etc.
+                deleteMod()
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(LapisTheme.Colors.textMuted)
+                Image(systemName: "trash")
+                    .font(.system(size: 13))
+                    .foregroundColor(LapisTheme.Colors.danger)
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
@@ -206,5 +253,26 @@ struct ModRow: View {
         .padding(LapisTheme.Spacing.lg)
         .glassBackground()
         .opacity(isEnabled ? 1.0 : 0.6)
+    }
+    
+    /// Rename .jar to .jar.disabled or vice versa
+    private func toggleMod(enabled: Bool) {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modsDir = docs.appendingPathComponent("Lapis/mods/\(version.folderName)")
+        
+        let currentPath = modsDir.appendingPathComponent(mod.fileName)
+        let newName = enabled ? mod.fileName.replacingOccurrences(of: ".disabled", with: "") : mod.fileName + ".disabled"
+        let newPath = modsDir.appendingPathComponent(newName)
+        
+        try? fm.moveItem(at: currentPath, to: newPath)
+    }
+    
+    /// Delete the mod file from disk
+    private func deleteMod() {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modPath = docs.appendingPathComponent("Lapis/mods/\(version.folderName)/\(mod.fileName)")
+        try? fm.removeItem(at: modPath)
     }
 }

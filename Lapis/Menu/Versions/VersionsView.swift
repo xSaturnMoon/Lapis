@@ -2,44 +2,9 @@ import SwiftUI
 
 struct VersionsView: View {
     @EnvironmentObject var appState: AppState
-    @State private var selectedLoader: ModLoader = .vanilla
-    @State private var selectedVersionDetail: GameVersion? = nil
-    @State private var searchText: String = ""
-    
-    // Sample data — will be replaced with real Mojang API data
-    private var sampleVersions: [GameVersion] {
-        let versions = [
-            ("1.21.4", "The Garden Awakens"),
-            ("1.21.1", "Tricky Trials"),
-            ("1.21", "Tricky Trials"),
-            ("1.20.4", "Trails & Tales"),
-            ("1.20.1", "Trails & Tales"),
-            ("1.19.4", "The Wild Update"),
-            ("1.18.2", "Caves & Cliffs Part II"),
-            ("1.17.1", "Caves & Cliffs Part I"),
-            ("1.16.5", "Nether Update"),
-            ("1.12.2", "World of Color"),
-            ("1.8.9", "Bountiful Update"),
-            ("1.7.10", "The Update that Changed the World"),
-        ]
-        return versions.map { v in
-            GameVersion(
-                id: "\(selectedLoader.rawValue.lowercased())-\(v.0)",
-                versionNumber: v.0,
-                loader: selectedLoader,
-                releaseDate: "2024",
-                description: v.1,
-                isInstalled: appState.installedVersions.contains(where: {
-                    $0.versionNumber == v.0 && $0.loader == selectedLoader
-                })
-            )
-        }
-    }
-    
-    private var filteredVersions: [GameVersion] {
-        if searchText.isEmpty { return sampleVersions }
-        return sampleVersions.filter { $0.versionNumber.contains(searchText) }
-    }
+    @StateObject private var mojangService = MojangService()
+    @State private var selectedMajor: String? = nil
+    @State private var selectedSubVersion: String? = nil
     
     let columns = [
         GridItem(.adaptive(minimum: 200, maximum: 280), spacing: LapisTheme.Spacing.md)
@@ -66,8 +31,7 @@ struct VersionsView: View {
                             ForEach(ModLoader.allCases) { loader in
                                 Button {
                                     withAnimation(LapisTheme.Animation.normal) {
-                                        selectedLoader = loader
-                                        selectedVersionDetail = nil
+                                        appState.selectedLoader = loader
                                     }
                                 } label: {
                                     Label(loader.rawValue, systemImage: loader.iconName)
@@ -75,9 +39,9 @@ struct VersionsView: View {
                             }
                         } label: {
                             HStack(spacing: LapisTheme.Spacing.sm) {
-                                Image(systemName: selectedLoader.iconName)
+                                Image(systemName: appState.selectedLoader.iconName)
                                     .font(.system(size: 12, weight: .semibold))
-                                Text(selectedLoader.rawValue)
+                                Text(appState.selectedLoader.rawValue)
                                     .font(.system(size: 13, weight: .semibold))
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 10, weight: .bold))
@@ -92,51 +56,94 @@ struct VersionsView: View {
                     .padding(.top, LapisTheme.Spacing.xl)
                     .padding(.bottom, LapisTheme.Spacing.lg)
                     
-                    // Grid of version cards
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: columns, spacing: LapisTheme.Spacing.md) {
-                            ForEach(filteredVersions) { version in
-                                VersionCardView(
-                                    version: version,
-                                    isSelected: selectedVersionDetail?.id == version.id
-                                ) {
-                                    withAnimation(LapisTheme.Animation.smooth) {
-                                        selectedVersionDetail = version
+                    // Content
+                    if mojangService.isLoading {
+                        Spacer()
+                        ProgressView()
+                            .tint(LapisTheme.Colors.accent)
+                        Text("Loading versions from Mojang...")
+                            .font(.system(size: 13))
+                            .foregroundColor(LapisTheme.Colors.textMuted)
+                            .padding(.top, LapisTheme.Spacing.sm)
+                        Spacer()
+                    } else if let error = mojangService.error {
+                        Spacer()
+                        VStack(spacing: LapisTheme.Spacing.md) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 32))
+                                .foregroundColor(LapisTheme.Colors.danger)
+                            Text(error)
+                                .font(.system(size: 13))
+                                .foregroundColor(LapisTheme.Colors.textSecondary)
+                            Button("Retry") {
+                                Task { await mojangService.fetchVersions() }
+                            }
+                            .buttonStyle(LapisButtonStyle(isAccent: true))
+                        }
+                        Spacer()
+                    } else {
+                        // Grid of major version cards (1.21, 1.20, 1.19...)
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVGrid(columns: columns, spacing: LapisTheme.Spacing.md) {
+                                ForEach(mojangService.majorVersions, id: \.self) { major in
+                                    MajorVersionCard(
+                                        majorVersion: major,
+                                        loader: appState.selectedLoader,
+                                        subVersionCount: mojangService.subVersions(for: major).count,
+                                        isSelected: selectedMajor == major
+                                    ) {
+                                        withAnimation(LapisTheme.Animation.smooth) {
+                                            selectedMajor = major
+                                            selectedSubVersion = nil
+                                        }
                                     }
                                 }
                             }
+                            .padding(.horizontal, LapisTheme.Spacing.xxl)
+                            .padding(.bottom, LapisTheme.Spacing.xxl)
                         }
-                        .padding(.horizontal, LapisTheme.Spacing.xxl)
-                        .padding(.bottom, LapisTheme.Spacing.xxl)
                     }
                 }
                 
-                // MARK: Right: Selected Version Panel (≈30%)
-                VersionDetailPanel(
-                    version: selectedVersionDetail,
-                    onSelect: { version in
-                        withAnimation(LapisTheme.Animation.smooth) {
-                            appState.selectedVersion = version
-                            appState.currentTab = .home
+                // MARK: Right: Selection Panel (≈30%)
+                VersionSelectionPanel(
+                    selectedMajor: selectedMajor,
+                    selectedSubVersion: $selectedSubVersion,
+                    loader: appState.selectedLoader,
+                    subVersions: selectedMajor != nil ? mojangService.subVersions(for: selectedMajor!) : [],
+                    onSelect: { subVersion in
+                        // Find the actual GameVersion object
+                        if let version = mojangService.allVersions.first(where: { $0.id == subVersion }) {
+                            withAnimation(LapisTheme.Animation.smooth) {
+                                appState.selectedVersion = version
+                                appState.selectedSubVersion = subVersion
+                                appState.currentTab = .home
+                            }
                         }
                     }
                 )
                 .frame(width: 280)
             }
         }
+        .task {
+            if mojangService.allVersions.isEmpty {
+                await mojangService.fetchVersions()
+            }
+        }
     }
 }
 
-// MARK: - Version Card
-struct VersionCardView: View {
-    let version: GameVersion
+// MARK: - Major Version Card (e.g. "1.21")
+struct MajorVersionCard: View {
+    let majorVersion: String
+    let loader: ModLoader
+    let subVersionCount: Int
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
-                // Card background with gradient
                 RoundedRectangle(cornerRadius: LapisTheme.Radius.large)
                     .fill(
                         LinearGradient(
@@ -149,47 +156,25 @@ struct VersionCardView: View {
                         )
                     )
                 
-                // Overlay gradient for text readability
+                // Loader icon watermark
                 VStack {
-                    Spacer()
-                    LinearGradient(
-                        colors: [.clear, Color.black.opacity(0.7)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 60)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: LapisTheme.Radius.large))
-                
-                // Version icon in center
-                VStack {
-                    Image(systemName: version.loader.iconName)
+                    Image(systemName: loader.iconName)
                         .font(.system(size: 28, weight: .light))
-                        .foregroundColor(LapisTheme.Colors.textMuted.opacity(0.3))
+                        .foregroundColor(LapisTheme.Colors.textMuted.opacity(0.2))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                // Version name
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(version.displayName)
-                        .font(.system(size: 15, weight: .black))
+                // Version info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(loader.rawValue.uppercased()) \(majorVersion)")
+                        .font(.system(size: 16, weight: .black))
                         .foregroundColor(LapisTheme.Colors.textPrimary)
+                    
+                    Text("\(subVersionCount) versions")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
                 }
                 .padding(LapisTheme.Spacing.lg)
-                
-                // Installed indicator
-                if version.isInstalled {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Circle()
-                                .fill(LapisTheme.Colors.success)
-                                .frame(width: 10, height: 10)
-                                .padding(LapisTheme.Spacing.md)
-                        }
-                        Spacer()
-                    }
-                }
             }
             .frame(height: 110)
             .overlay(
@@ -204,16 +189,19 @@ struct VersionCardView: View {
     }
 }
 
-// MARK: - Version Detail Side Panel
-struct VersionDetailPanel: View {
-    let version: GameVersion?
-    let onSelect: (GameVersion) -> Void
+// MARK: - Version Selection Panel (right side)
+struct VersionSelectionPanel: View {
+    let selectedMajor: String?
+    @Binding var selectedSubVersion: String?
+    let loader: ModLoader
+    let subVersions: [GameVersion]
+    let onSelect: (String) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
-            if let version = version {
+            if let major = selectedMajor {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Panel header
+                    // Header
                     Text("SELECTED VERSION")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(LapisTheme.Colors.textMuted)
@@ -222,18 +210,17 @@ struct VersionDetailPanel: View {
                         .padding(.top, LapisTheme.Spacing.xl)
                         .padding(.bottom, LapisTheme.Spacing.lg)
                     
-                    // Version preview card
+                    // Preview
                     ZStack {
                         RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                             .fill(LapisTheme.Colors.surfaceLight)
-                            .frame(height: 140)
+                            .frame(height: 100)
                         
                         VStack(spacing: LapisTheme.Spacing.sm) {
-                            Image(systemName: version.loader.iconName)
-                                .font(.system(size: 32, weight: .light))
+                            Image(systemName: loader.iconName)
+                                .font(.system(size: 28, weight: .light))
                                 .foregroundColor(LapisTheme.Colors.accent.opacity(0.5))
-                            
-                            Text(version.displayName)
+                            Text("\(loader.rawValue) \(major)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(LapisTheme.Colors.textPrimary)
                         }
@@ -242,25 +229,35 @@ struct VersionDetailPanel: View {
                     
                     Spacer().frame(height: LapisTheme.Spacing.xl)
                     
-                    // Version info
-                    VStack(alignment: .leading, spacing: LapisTheme.Spacing.md) {
-                        HStack(spacing: LapisTheme.Spacing.sm) {
-                            Image(systemName: version.loader.iconName)
-                                .font(.system(size: 14))
-                                .foregroundColor(LapisTheme.Colors.accent)
-                            Text("Minecraft \(version.versionNumber)")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(LapisTheme.Colors.textPrimary)
-                        }
-                        
-                        Text(version.description)
-                            .font(.system(size: 13, weight: .regular))
+                    // Sub-version dropdown
+                    VStack(alignment: .leading, spacing: LapisTheme.Spacing.sm) {
+                        Text("Version")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(LapisTheme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        Menu {
+                            ForEach(subVersions) { version in
+                                Button(version.id) {
+                                    selectedSubVersion = version.id
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(selectedSubVersion ?? "Select version...")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(selectedSubVersion != nil ? LapisTheme.Colors.textPrimary : LapisTheme.Colors.textMuted)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(LapisTheme.Colors.textMuted)
+                            }
+                            .padding(LapisTheme.Spacing.md)
+                            .glassBackground(cornerRadius: LapisTheme.Radius.small)
+                        }
                         
                         // Loader badge
                         HStack(spacing: LapisTheme.Spacing.xs) {
-                            Text(version.loader.rawValue)
+                            Text(loader.rawValue)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(LapisTheme.Colors.accent)
                                 .padding(.horizontal, LapisTheme.Spacing.sm)
@@ -270,16 +267,6 @@ struct VersionDetailPanel: View {
                                         .fill(LapisTheme.Colors.accent.opacity(0.12))
                                 )
                         }
-                        
-                        // Status
-                        HStack(spacing: LapisTheme.Spacing.sm) {
-                            Circle()
-                                .fill(version.isInstalled ? LapisTheme.Colors.success : LapisTheme.Colors.textMuted)
-                                .frame(width: 8, height: 8)
-                            Text(version.isInstalled ? "Installed" : "Not installed")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(LapisTheme.Colors.textSecondary)
-                        }
                     }
                     .padding(.horizontal, LapisTheme.Spacing.xl)
                     
@@ -287,7 +274,9 @@ struct VersionDetailPanel: View {
                     
                     // SELECT button
                     Button {
-                        onSelect(version)
+                        if let sub = selectedSubVersion {
+                            onSelect(sub)
+                        }
                     } label: {
                         HStack(spacing: LapisTheme.Spacing.sm) {
                             Image(systemName: "checkmark.circle.fill")
@@ -303,18 +292,14 @@ struct VersionDetailPanel: View {
                             RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                                 .fill(LapisTheme.Colors.accent)
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
-                                .stroke(LapisTheme.Colors.accentLight.opacity(0.3), lineWidth: 1)
-                        )
                     }
                     .buttonStyle(.plain)
+                    .disabled(selectedSubVersion == nil)
+                    .opacity(selectedSubVersion == nil ? 0.4 : 1.0)
                     .padding(.horizontal, LapisTheme.Spacing.xl)
                     .padding(.bottom, LapisTheme.Spacing.xl)
-                    
                 }
             } else {
-                // No version selected
                 VStack(spacing: LapisTheme.Spacing.lg) {
                     Spacer()
                     Image(systemName: "hand.tap")
@@ -328,14 +313,9 @@ struct VersionDetailPanel: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .background(
-            LapisTheme.Colors.surface.opacity(0.5)
-                .ignoresSafeArea()
-        )
+        .background(LapisTheme.Colors.surface.opacity(0.5).ignoresSafeArea())
         .overlay(
-            Rectangle()
-                .fill(LapisTheme.Colors.divider)
-                .frame(width: 1),
+            Rectangle().fill(LapisTheme.Colors.divider).frame(width: 1),
             alignment: .leading
         )
     }
