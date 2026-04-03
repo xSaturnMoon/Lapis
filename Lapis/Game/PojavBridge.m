@@ -4,10 +4,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS MAP_ANON
-#endif
-
 #ifndef MAP_JIT
 #define MAP_JIT 0x0800
 #endif
@@ -23,10 +19,6 @@ static int _renderer = 0;
     if (![[NSFileManager defaultManager] fileExistsAtPath:jrePath]) {
         NSLog(@"[Lapis] ERROR: JRE not found at %@", jrePath);
         return -1;
-    }
-    
-    if (![self isJITAvailable]) {
-        NSLog(@"[Lapis] WARNING: JIT not available. Game will be slow.");
     }
     
     setenv("JAVA_HOME", jrePath.UTF8String, 1);
@@ -108,12 +100,10 @@ static int _renderer = 0;
 + (NSString *)jrePath {
     if (_javaHome) return _javaHome;
     
-    // 1. Check app bundle
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *jrePath = [bundlePath stringByAppendingPathComponent:@"jre"];
     if ([[NSFileManager defaultManager] fileExistsAtPath:jrePath]) return jrePath;
     
-    // 2. Check Documents
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     jrePath = [paths.firstObject stringByAppendingPathComponent:@"Lapis/jre"];
     
@@ -121,25 +111,21 @@ static int _renderer = 0;
 }
 
 + (BOOL)isJITAvailable {
+    // Safe check: try to allocate RW memory first (never crashes),
+    // then test if EXEC is possible via mprotect (safer than mmap with PROT_EXEC)
     void *ptr = mmap(NULL, 4096,
-                     PROT_READ | PROT_WRITE | PROT_EXEC,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_JIT,
+                     PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANON,
                      -1, 0);
-    if (ptr != MAP_FAILED) {
-        munmap(ptr, 4096);
-        return YES;
+    if (ptr == MAP_FAILED) {
+        return NO;
     }
     
-    ptr = mmap(NULL, 4096,
-               PROT_READ | PROT_WRITE | PROT_EXEC,
-               MAP_PRIVATE | MAP_ANONYMOUS,
-               -1, 0);
-    if (ptr != MAP_FAILED) {
-        munmap(ptr, 4096);
-        return YES;
-    }
+    // Try to make it executable — this is what JIT needs
+    int result = mprotect(ptr, 4096, PROT_READ | PROT_WRITE | PROT_EXEC);
+    munmap(ptr, 4096);
     
-    return NO;
+    return (result == 0);
 }
 
 + (void)enableJIT {
