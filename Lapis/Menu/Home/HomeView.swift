@@ -2,9 +2,47 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var downloader = GameDownloader()
     @State private var pulseAnimation = false
+    @State private var showInputMode = false
+    @State private var showDownloadProgress = false
+    @State private var selectedInputMode: InputMode? = nil
     
     var body: some View {
+        ZStack {
+            // Main Home content
+            mainContent
+            
+            // Input mode overlay
+            if showInputMode {
+                InputModeView { mode in
+                    selectedInputMode = mode
+                    withAnimation(LapisTheme.Animation.smooth) {
+                        showInputMode = false
+                    }
+                    startGameFlow(mode: mode)
+                }
+                .transition(.opacity)
+            }
+            
+            // Download overlay
+            if showDownloadProgress {
+                DownloadProgressView(downloader: downloader)
+                    .transition(.opacity)
+                    .onChange(of: downloader.isComplete) { complete in
+                        if complete {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                withAnimation { showDownloadProgress = false }
+                                launchGame()
+                            }
+                        }
+                    }
+            }
+        }
+    }
+    
+    // MARK: - Main Content
+    private var mainContent: some View {
         ZStack {
             LinearGradient(
                 colors: [LapisTheme.Colors.background, LapisTheme.Colors.surface.opacity(0.5)],
@@ -14,15 +52,12 @@ struct HomeView: View {
             .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
                 HStack {
                     Text("HOME")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(LapisTheme.Colors.textSecondary)
                         .tracking(2)
-                    
                     Spacer()
-                    
                     HStack(spacing: LapisTheme.Spacing.xs) {
                         Circle()
                             .fill(appState.isLoggedIn ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
@@ -45,40 +80,44 @@ struct HomeView: View {
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [LapisTheme.Colors.accent, LapisTheme.Colors.accentLight],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
+                                    startPoint: .leading, endPoint: .trailing
                                 )
                             )
-                        
                         Text("Minecraft Java Launcher")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(LapisTheme.Colors.textSecondary)
                     }
                     
-                    // Selected version card or empty state
+                    // Selected version card
                     if let version = appState.selectedVersion {
                         HStack(spacing: LapisTheme.Spacing.lg) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                                     .fill(LapisTheme.Colors.accent.opacity(0.1))
                                     .frame(width: 56, height: 56)
-                                
                                 Image(systemName: appState.selectedLoader.iconName)
                                     .font(.system(size: 22, weight: .medium))
                                     .foregroundColor(LapisTheme.Colors.accent)
                             }
-                            
                             VStack(alignment: .leading, spacing: LapisTheme.Spacing.xs) {
                                 Text("\(appState.selectedLoader.rawValue) \(version.id)")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(LapisTheme.Colors.textPrimary)
-                                
                                 Text(version.type.capitalized)
                                     .font(.system(size: 13))
                                     .foregroundColor(LapisTheme.Colors.textSecondary)
                             }
-                            
                             Spacer()
+                            
+                            // JIT status
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(PojavBridge.isJITAvailable() ? LapisTheme.Colors.success : LapisTheme.Colors.warning)
+                                    .frame(width: 6, height: 6)
+                                Text(PojavBridge.isJITAvailable() ? "JIT" : "No JIT")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(LapisTheme.Colors.textMuted)
+                            }
                         }
                         .padding(LapisTheme.Spacing.xl)
                         .frame(maxWidth: 420)
@@ -88,15 +127,11 @@ struct HomeView: View {
                             Image(systemName: "square.stack.3d.up.slash")
                                 .font(.system(size: 32, weight: .light))
                                 .foregroundColor(LapisTheme.Colors.textMuted)
-                            
                             Text("No version selected")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundColor(LapisTheme.Colors.textSecondary)
-                            
                             Button {
-                                withAnimation(LapisTheme.Animation.smooth) {
-                                    appState.currentTab = .versions
-                                }
+                                appState.currentTab = .versions
                             } label: {
                                 Text("Browse Versions")
                                     .font(.system(size: 13, weight: .semibold))
@@ -110,7 +145,9 @@ struct HomeView: View {
                     
                     // PLAY button
                     Button {
-                        // Game launch — will be connected to PojavLauncher core
+                        withAnimation(LapisTheme.Animation.smooth) {
+                            showInputMode = true
+                        }
                     } label: {
                         HStack(spacing: LapisTheme.Spacing.md) {
                             Image(systemName: "play.fill")
@@ -147,7 +184,6 @@ struct HomeView: View {
                         }
                     }
                     
-                    // Warning if not logged in
                     if !appState.isLoggedIn && appState.selectedVersion != nil {
                         Text("Sign in with Microsoft to play")
                             .font(.system(size: 12))
@@ -167,5 +203,32 @@ struct HomeView: View {
                 .padding(.bottom, LapisTheme.Spacing.lg)
             }
         }
+    }
+    
+    // MARK: - Game Flow
+    private func startGameFlow(mode: InputMode) {
+        guard let version = appState.selectedVersion else { return }
+        
+        // Check if files are already downloaded
+        if downloader.isVersionDownloaded(version.id) {
+            launchGame()
+        } else {
+            withAnimation { showDownloadProgress = true }
+            Task {
+                await downloader.downloadVersion(version.id)
+            }
+        }
+    }
+    
+    private func launchGame() {
+        guard let version = appState.selectedVersion,
+              let mode = selectedInputMode else { return }
+        
+        let launcher = GameLauncher(appState: appState)
+        launcher.launchGame(
+            versionId: version.id,
+            loader: appState.selectedLoader,
+            inputMode: mode
+        )
     }
 }
