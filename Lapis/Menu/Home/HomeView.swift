@@ -117,11 +117,12 @@ struct HomeView: View {
                             Spacer()
                             
                             // JIT status
+                            let jitAvailable = PojavBridge.isJITAvailable()
                             HStack(spacing: 4) {
                                 Circle()
-                                    .fill(PojavBridge.isJITAvailable() ? LapisTheme.Colors.success : LapisTheme.Colors.warning)
+                                    .fill(jitAvailable ? LapisTheme.Colors.success : LapisTheme.Colors.warning)
                                     .frame(width: 6, height: 6)
-                                Text(PojavBridge.isJITAvailable() ? "JIT" : "No JIT")
+                                Text(jitAvailable ? "JIT" : "No JIT")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(LapisTheme.Colors.textMuted)
                             }

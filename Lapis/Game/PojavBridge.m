@@ -4,6 +4,14 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+
+#ifndef MAP_JIT
+#define MAP_JIT 0x0800
+#endif
+
 static NSString *_javaHome = nil;
 static int _renderer = 0;
 
@@ -17,9 +25,8 @@ static int _renderer = 0;
         return -1;
     }
     
-    // Check JIT
     if (![self isJITAvailable]) {
-        NSLog(@"[Lapis] WARNING: JIT is not available. Performance will be very poor.");
+        NSLog(@"[Lapis] WARNING: JIT not available. Game will be slow.");
     }
     
     setenv("JAVA_HOME", jrePath.UTF8String, 1);
@@ -42,7 +49,7 @@ static int _renderer = 0;
     void *jliHandle = dlopen(jliPath.UTF8String, RTLD_NOW | RTLD_GLOBAL);
     
     if (!jliHandle) {
-        NSLog(@"[Lapis] ERROR: Failed to load libjli.dylib: %s", dlerror());
+        NSLog(@"[Lapis] ERROR: Failed to load libjli: %s", dlerror());
         return -2;
     }
     
@@ -61,7 +68,7 @@ static int _renderer = 0;
     JLI_Launch_t jliLaunch = (JLI_Launch_t)dlsym(jliHandle, "JLI_Launch");
     
     if (!jliLaunch) {
-        NSLog(@"[Lapis] ERROR: JLI_Launch symbol not found: %s", dlerror());
+        NSLog(@"[Lapis] ERROR: JLI_Launch not found: %s", dlerror());
         dlclose(jliHandle);
         return -3;
     }
@@ -78,7 +85,7 @@ static int _renderer = 0;
     NSLog(@"[Lapis] Launching JVM with %d arguments", argc);
     
     int result = jliLaunch(argc, argv, 0, NULL, 0, NULL,
-        "17.0.1", "17.0.1",
+        "17.0.5", "17.0.5",
         "java", "Lapis",
         0, 0, 0, 0);
     
@@ -108,14 +115,12 @@ static int _renderer = 0;
     
     // 2. Check Documents
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *docsDir = paths.firstObject;
-    jrePath = [docsDir stringByAppendingPathComponent:@"Lapis/jre"];
+    jrePath = [paths.firstObject stringByAppendingPathComponent:@"Lapis/jre"];
     
     return jrePath;
 }
 
 + (BOOL)isJITAvailable {
-    // Try to allocate RWX memory — this only works if JIT is enabled
     void *ptr = mmap(NULL, 4096,
                      PROT_READ | PROT_WRITE | PROT_EXEC,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_JIT,
@@ -125,7 +130,6 @@ static int _renderer = 0;
         return YES;
     }
     
-    // Fallback: try without MAP_JIT flag
     ptr = mmap(NULL, 4096,
                PROT_READ | PROT_WRITE | PROT_EXEC,
                MAP_PRIVATE | MAP_ANONYMOUS,
@@ -139,7 +143,7 @@ static int _renderer = 0;
 }
 
 + (void)enableJIT {
-    NSLog(@"[Lapis] JIT status: %@", [self isJITAvailable] ? @"Available" : @"Not available");
+    NSLog(@"[Lapis] JIT: %@", [self isJITAvailable] ? @"Available" : @"Not available");
 }
 
 @end
