@@ -2,11 +2,6 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
-
-#ifndef MAP_JIT
-#define MAP_JIT 0x0800
-#endif
 
 static NSString *_javaHome = nil;
 static int _renderer = 0;
@@ -111,21 +106,25 @@ static int _renderer = 0;
 }
 
 + (BOOL)isJITAvailable {
-    // Safe check: try to allocate RW memory first (never crashes),
-    // then test if EXEC is possible via mprotect (safer than mmap with PROT_EXEC)
-    void *ptr = mmap(NULL, 4096,
-                     PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANON,
-                     -1, 0);
-    if (ptr == MAP_FAILED) {
-        return NO;
+    // SAFE check: do NOT use mmap or mprotect with PROT_EXEC — that crashes on iOS!
+    // Instead, check if the dynamic-codesigning entitlement is present
+    // by looking at the CS_DEBUGGED flag via csops
+    
+    // Simple approach: check if we were launched by a debugger or TrollStore
+    // by checking the CS_DEBUGGED (0x10000000) flag
+    uint32_t flags = 0;
+    int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
+    int result = csops(getpid(), 0 /* CS_OPS_STATUS */, &flags, sizeof(flags));
+    
+    if (result == 0) {
+        // CS_DEBUGGED = 0x10000000, CS_GET_TASK_ALLOW = 0x4
+        BOOL debugged = (flags & 0x10000000) != 0;
+        BOOL taskAllow = (flags & 0x4) != 0;
+        NSLog(@"[Lapis] CS flags: 0x%x, debugged: %d, taskAllow: %d", flags, debugged, taskAllow);
+        return debugged || taskAllow;
     }
     
-    // Try to make it executable — this is what JIT needs
-    int result = mprotect(ptr, 4096, PROT_READ | PROT_WRITE | PROT_EXEC);
-    munmap(ptr, 4096);
-    
-    return (result == 0);
+    return NO;
 }
 
 + (void)enableJIT {

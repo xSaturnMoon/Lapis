@@ -47,9 +47,10 @@ struct HomeView: View {
         } message: {
             Text(launchErrorText)
         }
-        .onAppear {
-            // Check JIT safely on appear, not in body
-            jitAvailable = PojavBridge.isJITAvailable()
+        .task {
+            // Check JIT safely on background
+            let available = PojavBridge.isJITAvailable()
+            await MainActor.run { jitAvailable = available }
         }
     }
     
