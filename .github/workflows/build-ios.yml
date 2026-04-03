@@ -18,32 +18,8 @@ jobs:
       - name: Select Xcode 16
         run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Download JRE for iOS
-        run: |
-          echo "=== Downloading OpenJDK 17 for iOS ARM64 ==="
-          # Download pre-built JRE from PojavLauncher releases
-          mkdir -p jre-ios
-          curl -L -o jre.tar.gz "https://github.com/nicklasmoeller/openjdk-mobile-targets/releases/download/v17.0.1-jvm-ios-arm64/jre-17.0.1-ios-arm64.tar.gz" || {
-            echo "Primary JRE download failed, trying alternative..."
-            curl -L -o jre.tar.gz "https://github.com/nicklasmoeller/openjdk-mobile-targets/releases/download/v17.0.1-jvm-ios-arm64/jre-17.0.1+12-ios-aarch64.tar.gz" || {
-              echo "WARNING: JRE download failed. Building without JRE bundle."
-              echo "The JRE will need to be installed separately on the device."
-              touch jre-ios/.no-jre
-            }
-          }
-          if [ -f jre.tar.gz ]; then
-            tar xzf jre.tar.gz -C jre-ios/ 2>/dev/null || {
-              echo "Extracting with different structure..."
-              tar xzf jre.tar.gz
-              mv jre*/* jre-ios/ 2>/dev/null || mv java*/* jre-ios/ 2>/dev/null || true
-            }
-            rm -f jre.tar.gz
-          fi
-          echo "JRE contents:"
-          ls -la jre-ios/ || echo "JRE directory empty"
+      - name: Install tools
+        run: brew install xcodegen ldid
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
@@ -73,23 +49,8 @@ jobs:
           
           echo "Found app at: $APP_PATH"
           
-          # Bundle JRE into the app if available
-          if [ -d "jre-ios" ] && [ ! -f "jre-ios/.no-jre" ]; then
-            echo "Bundling JRE into app..."
-            cp -r jre-ios "$APP_PATH/jre"
-            echo "JRE bundled successfully"
-          else
-            echo "WARNING: No JRE to bundle"
-          fi
-          
-          # Sign entitlements
-          if [ -f "Lapis/Lapis.entitlements" ]; then
-            ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis" 2>/dev/null || {
-              echo "ldid not found, installing..."
-              brew install ldid
-              ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
-            }
-          fi
+          # Sign with JIT entitlements
+          ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
           
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
