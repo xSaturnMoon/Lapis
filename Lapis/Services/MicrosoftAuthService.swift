@@ -1,93 +1,59 @@
 import Foundation
-import AuthenticationServices
+import WebKit
+import SwiftUI
 
-// MARK: - Microsoft Auth Service (REAL OAuth)
+// MARK: - Microsoft Auth Service (REAL OAuth via WKWebView)
 class MicrosoftAuthService: ObservableObject {
     @Published var isAuthenticating = false
+    @Published var showWebView = false
     @Published var error: String? = nil
     
-    // Microsoft OAuth endpoints
-    private let clientId = "00000000402b5328" // Standard Minecraft client ID
-    private let redirectUri = "https://login.live.com/oauth20_desktop.srf"
-    private let authURL = "https://login.live.com/oauth20_authorize.srf"
+    let clientId = "00000000402b5328"
+    let redirectUri = "https://login.live.com/oauth20_desktop.srf"
+    
     private let tokenURL = "https://login.live.com/oauth20_token.srf"
     private let xboxAuthURL = "https://user.auth.xboxlive.com/user/authenticate"
     private let xstsURL = "https://xsts.auth.xboxlive.com/xsts/authorize"
     private let mcAuthURL = "https://api.minecraftservices.com/authentication/login_with_xbox"
     private let mcProfileURL = "https://api.minecraftservices.com/minecraft/profile"
     
-    /// Start the full Microsoft → Xbox → Minecraft authentication flow
-    func authenticate(appState: AppState) async {
-        await MainActor.run { isAuthenticating = true; error = nil }
-        
-        do {
-            // Step 1: Get Microsoft OAuth code via browser
-            let code = try await getMicrosoftCode()
-            
-            // Step 2: Exchange code for Microsoft token
-            let msToken = try await exchangeCodeForToken(code: code)
-            
-            // Step 3: Authenticate with Xbox Live
-            let (xblToken, userHash) = try await authenticateXboxLive(msToken: msToken)
-            
-            // Step 4: Get XSTS token
-            let xstsToken = try await getXSTSToken(xblToken: xblToken)
-            
-            // Step 5: Authenticate with Minecraft
-            let mcToken = try await authenticateMinecraft(xstsToken: xstsToken, userHash: userHash)
-            
-            // Step 6: Get Minecraft profile
-            let (name, uuid) = try await getMinecraftProfile(accessToken: mcToken)
-            
-            await MainActor.run {
-                appState.isLoggedIn = true
-                appState.playerName = name
-                appState.playerUUID = uuid
-                appState.accessToken = mcToken
-                self.isAuthenticating = false
-            }
-        } catch {
-            await MainActor.run {
-                self.error = "Authentication failed: \(error.localizedDescription)"
-                self.isAuthenticating = false
-            }
-        }
-    }
-    
-    // MARK: Step 1 - Microsoft OAuth via ASWebAuthenticationSession
-    private func getMicrosoftCode() async throws -> String {
+    var authURL: URL {
         let scope = "XboxLive.signin offline_access"
-        let urlString = "\(authURL)?client_id=\(clientId)&response_type=code&redirect_uri=\(redirectUri)&scope=\(scope.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? scope)"
+        let urlString = "https://login.live.com/oauth20_authorize.srf?client_id=\(clientId)&response_type=code&redirect_uri=\(redirectUri.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)&scope=\(scope.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)"
+        return URL(string: urlString)!
+    }
+    
+    /// Called when WKWebView detects the redirect with the auth code
+    func handleAuthCode(_ code: String, appState: AppState) {
+        showWebView = false
+        isAuthenticating = true
+        error = nil
         
-        guard let url = URL(string: urlString) else {
-            throw AuthError.invalidURL
-        }
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "https") { callbackURL, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
+        Task {
+            do {
+                let msToken = try await exchangeCodeForToken(code: code)
+                let (xblToken, userHash) = try await authenticateXboxLive(msToken: msToken)
+                let xstsToken = try await getXSTSToken(xblToken: xblToken)
+                let mcToken = try await authenticateMinecraft(xstsToken: xstsToken, userHash: userHash)
+                let (name, uuid) = try await getMinecraftProfile(accessToken: mcToken)
                 
-                guard let callbackURL = callbackURL,
-                      let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-                      let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
-                    continuation.resume(throwing: AuthError.noCode)
-                    return
+                await MainActor.run {
+                    appState.isLoggedIn = true
+                    appState.playerName = name
+                    appState.playerUUID = uuid
+                    appState.accessToken = mcToken
+                    self.isAuthenticating = false
                 }
-                
-                continuation.resume(returning: code)
-            }
-            session.prefersEphemeralWebBrowserSession = false
-            
-            DispatchQueue.main.async {
-                session.start()
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    self.isAuthenticating = false
+                }
             }
         }
     }
     
-    // MARK: Step 2 - Exchange code for Microsoft token
+    // MARK: - Token Exchange
     private func exchangeCodeForToken(code: String) async throws -> String {
         guard let url = URL(string: tokenURL) else { throw AuthError.invalidURL }
         
@@ -99,22 +65,21 @@ class MicrosoftAuthService: ObservableObject {
         request.httpBody = body.data(using: .utf8)
         
         let (data, _) = try await URLSession.shared.data(for: request)
-        
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String else {
             throw AuthError.tokenParseFailed
         }
-        
         return accessToken
     }
     
-    // MARK: Step 3 - Xbox Live authentication
+    // MARK: - Xbox Live
     private func authenticateXboxLive(msToken: String) async throws -> (String, String) {
         guard let url = URL(string: xboxAuthURL) else { throw AuthError.invalidURL }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         let body: [String: Any] = [
             "Properties": [
@@ -135,17 +100,17 @@ class MicrosoftAuthService: ObservableObject {
               let userHash = xui["uhs"] else {
             throw AuthError.xboxFailed
         }
-        
         return (token, userHash)
     }
     
-    // MARK: Step 4 - XSTS token
+    // MARK: - XSTS
     private func getXSTSToken(xblToken: String) async throws -> String {
         guard let url = URL(string: xstsURL) else { throw AuthError.invalidURL }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         let body: [String: Any] = [
             "Properties": [
@@ -162,11 +127,10 @@ class MicrosoftAuthService: ObservableObject {
               let token = json["Token"] as? String else {
             throw AuthError.xstsFailed
         }
-        
         return token
     }
     
-    // MARK: Step 5 - Minecraft authentication
+    // MARK: - Minecraft Auth
     private func authenticateMinecraft(xstsToken: String, userHash: String) async throws -> String {
         guard let url = URL(string: mcAuthURL) else { throw AuthError.invalidURL }
         
@@ -174,9 +138,7 @@ class MicrosoftAuthService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body: [String: String] = [
-            "identityToken": "XBL3.0 x=\(userHash);\(xstsToken)"
-        ]
+        let body: [String: String] = ["identityToken": "XBL3.0 x=\(userHash);\(xstsToken)"]
         request.httpBody = try JSONEncoder().encode(body)
         
         let (data, _) = try await URLSession.shared.data(for: request)
@@ -184,11 +146,10 @@ class MicrosoftAuthService: ObservableObject {
               let accessToken = json["access_token"] as? String else {
             throw AuthError.mcAuthFailed
         }
-        
         return accessToken
     }
     
-    // MARK: Step 6 - Get Minecraft profile
+    // MARK: - Minecraft Profile
     private func getMinecraftProfile(accessToken: String) async throws -> (String, String) {
         guard let url = URL(string: mcProfileURL) else { throw AuthError.invalidURL }
         
@@ -201,30 +162,70 @@ class MicrosoftAuthService: ObservableObject {
               let uuid = json["id"] as? String else {
             throw AuthError.profileFailed
         }
-        
         return (name, uuid)
     }
 }
 
 // MARK: - Auth Errors
 enum AuthError: LocalizedError {
-    case invalidURL
-    case noCode
-    case tokenParseFailed
-    case xboxFailed
-    case xstsFailed
-    case mcAuthFailed
-    case profileFailed
+    case invalidURL, noCode, tokenParseFailed, xboxFailed, xstsFailed, mcAuthFailed, profileFailed
     
     var errorDescription: String? {
         switch self {
-        case .invalidURL: return "Invalid authentication URL"
+        case .invalidURL: return "Invalid URL"
         case .noCode: return "No authorization code received"
         case .tokenParseFailed: return "Failed to parse Microsoft token"
         case .xboxFailed: return "Xbox Live authentication failed"
-        case .xstsFailed: return "XSTS token retrieval failed"
+        case .xstsFailed: return "XSTS token failed"
         case .mcAuthFailed: return "Minecraft authentication failed"
         case .profileFailed: return "Failed to get Minecraft profile"
+        }
+    }
+}
+
+// MARK: - WKWebView for Microsoft Login
+struct MicrosoftLoginWebView: UIViewRepresentable {
+    let authService: MicrosoftAuthService
+    @EnvironmentObject var appState: AppState
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .default()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.load(URLRequest(url: authService.authURL))
+        return webView
+    }
+    
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(authService: authService, appState: appState)
+    }
+    
+    class Coordinator: NSObject, WKNavigationDelegate {
+        let authService: MicrosoftAuthService
+        let appState: AppState
+        
+        init(authService: MicrosoftAuthService, appState: AppState) {
+            self.authService = authService
+            self.appState = appState
+        }
+        
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            if let url = navigationAction.request.url,
+               url.absoluteString.starts(with: authService.redirectUri) {
+                // Extract the auth code from the redirect URL
+                if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let code = components.queryItems?.first(where: { $0.name == "code" })?.value {
+                    authService.handleAuthCode(code, appState: appState)
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
+            decisionHandler(.allow)
         }
     }
 }

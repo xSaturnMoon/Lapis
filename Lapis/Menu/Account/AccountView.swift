@@ -9,39 +9,77 @@ struct AccountView: View {
         ZStack {
             Color.black.opacity(0.6)
                 .ignoresSafeArea()
-                .onTapGesture { dismiss() }
+                .onTapGesture {
+                    if !authService.showWebView { dismiss() }
+                }
             
-            VStack(spacing: 0) {
-                // Close button
-                HStack {
-                    Spacer()
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
+            if authService.showWebView {
+                // Full screen Microsoft Login WebView
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Sign in with Microsoft")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(LapisTheme.Colors.textMuted)
-                            .frame(width: 32, height: 32)
+                            .foregroundColor(LapisTheme.Colors.textPrimary)
+                        Spacer()
+                        Button {
+                            authService.showWebView = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(LapisTheme.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(LapisTheme.Spacing.lg)
+                    .background(LapisTheme.Colors.surface)
+                    
+                    MicrosoftLoginWebView(authService: authService)
+                        .environmentObject(appState)
                 }
-                .padding(.horizontal, LapisTheme.Spacing.lg)
-                .padding(.top, LapisTheme.Spacing.lg)
-                
-                if appState.isLoggedIn {
-                    LoggedInView(authService: authService)
-                } else {
-                    LoginPromptView(authService: authService)
+                .frame(maxWidth: 500, maxHeight: 600)
+                .clipShape(RoundedRectangle(cornerRadius: LapisTheme.Radius.xl))
+                .shadow(color: .black.opacity(0.5), radius: 30)
+            } else {
+                // Account card
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(LapisTheme.Colors.textMuted)
+                                .frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, LapisTheme.Spacing.lg)
+                    .padding(.top, LapisTheme.Spacing.lg)
+                    
+                    if appState.isLoggedIn {
+                        LoggedInView()
+                    } else if authService.isAuthenticating {
+                        Spacer()
+                        ProgressView()
+                            .tint(LapisTheme.Colors.accent)
+                        Text("Authenticating with Xbox Live...")
+                            .font(.system(size: 13))
+                            .foregroundColor(LapisTheme.Colors.textMuted)
+                            .padding(.top, LapisTheme.Spacing.sm)
+                        Spacer()
+                    } else {
+                        LoginPromptView(authService: authService)
+                    }
                 }
+                .frame(width: 360, height: 420)
+                .glassBackground(cornerRadius: LapisTheme.Radius.xl)
+                .shadow(color: .black.opacity(0.4), radius: 30, y: 10)
             }
-            .frame(width: 360, height: 420)
-            .glassBackground(cornerRadius: LapisTheme.Radius.xl)
-            .shadow(color: .black.opacity(0.4), radius: 30, y: 10)
         }
     }
 }
 
-// MARK: - Login Prompt (REAL Microsoft OAuth)
+// MARK: - Login Prompt
 struct LoginPromptView: View {
-    @EnvironmentObject var appState: AppState
     @ObservedObject var authService: MicrosoftAuthService
     
     var body: some View {
@@ -52,7 +90,6 @@ struct LoginPromptView: View {
                 Circle()
                     .fill(LapisTheme.Colors.accent.opacity(0.1))
                     .frame(width: 80, height: 80)
-                
                 Image(systemName: "person.crop.circle")
                     .font(.system(size: 36, weight: .light))
                     .foregroundColor(LapisTheme.Colors.accent)
@@ -62,33 +99,22 @@ struct LoginPromptView: View {
                 Text("Microsoft Account")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(LapisTheme.Colors.textPrimary)
-                
                 Text("Sign in with your Microsoft account\nto play Minecraft Java Edition.")
                     .font(.system(size: 13))
                     .foregroundColor(LapisTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
             }
             
-            if authService.isAuthenticating {
-                ProgressView()
-                    .tint(LapisTheme.Colors.accent)
-                Text("Authenticating...")
-                    .font(.system(size: 12))
-                    .foregroundColor(LapisTheme.Colors.textMuted)
-            } else {
-                Button {
-                    Task {
-                        await authService.authenticate(appState: appState)
-                    }
-                } label: {
-                    HStack(spacing: LapisTheme.Spacing.sm) {
-                        Image(systemName: "arrow.right.circle.fill")
-                        Text("Sign In with Microsoft")
-                            .font(.system(size: 14, weight: .bold))
-                    }
+            Button {
+                authService.showWebView = true
+            } label: {
+                HStack(spacing: LapisTheme.Spacing.sm) {
+                    Image(systemName: "arrow.right.circle.fill")
+                    Text("Sign In with Microsoft")
+                        .font(.system(size: 14, weight: .bold))
                 }
-                .buttonStyle(LapisButtonStyle(isAccent: true))
             }
+            .buttonStyle(LapisButtonStyle(isAccent: true))
             
             if let error = authService.error {
                 Text(error)
@@ -107,13 +133,11 @@ struct LoginPromptView: View {
 // MARK: - Logged In
 struct LoggedInView: View {
     @EnvironmentObject var appState: AppState
-    @ObservedObject var authService: MicrosoftAuthService
     
     var body: some View {
         VStack(spacing: LapisTheme.Spacing.xl) {
             Spacer()
             
-            // Player avatar from Mojang
             AsyncImage(url: URL(string: "https://mc-heads.net/body/\(appState.playerUUID)/100")) { phase in
                 switch phase {
                 case .success(let image):
@@ -132,7 +156,6 @@ struct LoggedInView: View {
                 Text(appState.playerName)
                     .font(.system(size: 22, weight: .black))
                     .foregroundColor(LapisTheme.Colors.textPrimary)
-                
                 Text("Premium Account")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(LapisTheme.Colors.accent)
@@ -147,9 +170,7 @@ struct LoggedInView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(LapisTheme.Colors.textMuted)
                 }
-                
                 Rectangle().fill(LapisTheme.Colors.divider).frame(width: 1, height: 32)
-                
                 VStack(spacing: LapisTheme.Spacing.xs) {
                     Text("Online")
                         .font(.system(size: 16, weight: .bold))
@@ -169,12 +190,10 @@ struct LoggedInView: View {
                 appState.playerName = ""
                 appState.playerUUID = ""
                 appState.accessToken = ""
-                appState.totalPlayTimeMinutes = 0
             } label: {
                 HStack(spacing: LapisTheme.Spacing.sm) {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                    Text("Sign Out")
-                        .font(.system(size: 13, weight: .semibold))
+                    Text("Sign Out").font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundColor(LapisTheme.Colors.danger)
             }
@@ -184,8 +203,7 @@ struct LoggedInView: View {
         .padding(LapisTheme.Spacing.xxl)
     }
     
-    private func formatPlayTime(_ minutes: Int) -> String {
-        let hours = minutes / 60
-        return hours > 0 ? "\(hours)h \(minutes % 60)m" : "\(minutes)m"
+    private func formatPlayTime(_ m: Int) -> String {
+        m / 60 > 0 ? "\(m/60)h \(m%60)m" : "\(m)m"
     }
 }
