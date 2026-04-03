@@ -7,11 +7,31 @@ class AppState: ObservableObject {
     @Published var selectedSubVersion: String? = nil
     @Published var selectedLoader: ModLoader = .vanilla
     @Published var installedVersions: [InstalledVersion] = []
-    @Published var isLoggedIn: Bool = false
-    @Published var playerName: String = ""
-    @Published var playerUUID: String = ""
-    @Published var accessToken: String = ""
-    @Published var totalPlayTimeMinutes: Int = 0
+    @Published var isLoggedIn: Bool = false {
+        didSet { UserDefaults.standard.set(isLoggedIn, forKey: "lapis_logged_in") }
+    }
+    @Published var playerName: String = "" {
+        didSet { UserDefaults.standard.set(playerName, forKey: "lapis_player_name") }
+    }
+    @Published var playerUUID: String = "" {
+        didSet { UserDefaults.standard.set(playerUUID, forKey: "lapis_player_uuid") }
+    }
+    @Published var accessToken: String = "" {
+        didSet { UserDefaults.standard.set(accessToken, forKey: "lapis_access_token") }
+    }
+    @Published var totalPlayTimeMinutes: Int = 0 {
+        didSet { UserDefaults.standard.set(totalPlayTimeMinutes, forKey: "lapis_play_time") }
+    }
+    
+    init() {
+        // Restore saved account
+        let defaults = UserDefaults.standard
+        isLoggedIn = defaults.bool(forKey: "lapis_logged_in")
+        playerName = defaults.string(forKey: "lapis_player_name") ?? ""
+        playerUUID = defaults.string(forKey: "lapis_player_uuid") ?? ""
+        accessToken = defaults.string(forKey: "lapis_access_token") ?? ""
+        totalPlayTimeMinutes = defaults.integer(forKey: "lapis_play_time")
+    }
     
     /// Load installed versions from disk on startup
     func loadInstalledVersions() {
@@ -25,14 +45,11 @@ class AppState: ObservableObject {
             .filter { $0.hasDirectoryPath }
             .compactMap { dir -> InstalledVersion? in
                 let name = dir.lastPathComponent
-                // Parse folder name like "mods-1.21.1-vanilla"
                 let parts = name.replacingOccurrences(of: "mods-", with: "").split(separator: "-")
                 guard parts.count >= 2 else { return nil }
                 let ver = String(parts[0])
                 let loaderStr = String(parts[1])
                 let loader = ModLoader(rawValue: loaderStr.capitalized) ?? .vanilla
-                
-                // Count .jar files inside
                 let jars = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?.filter { $0.pathExtension == "jar" } ?? []
                 
                 return InstalledVersion(

@@ -7,6 +7,8 @@ struct HomeView: View {
     @State private var showInputMode = false
     @State private var showDownloadProgress = false
     @State private var selectedInputMode: InputMode? = nil
+    @State private var showLaunchError = false
+    @State private var launchErrorText = ""
     
     var body: some View {
         ZStack {
@@ -38,6 +40,11 @@ struct HomeView: View {
                         }
                     }
             }
+        }
+        .alert("Launch Error", isPresented: $showLaunchError) {
+            Button("OK") {}
+        } message: {
+            Text(launchErrorText)
         }
     }
     
@@ -230,5 +237,10 @@ struct HomeView: View {
             loader: appState.selectedLoader,
             inputMode: mode
         )
+        
+        if let error = launcher.launchError {
+            launchErrorText = error
+            showLaunchError = true
+        }
     }
 }

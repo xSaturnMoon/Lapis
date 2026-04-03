@@ -1,9 +1,11 @@
 import Foundation
 
-// MARK: - Game Launcher (Bridge to PojavLauncher native code)
+// MARK: - Game Launcher
 class GameLauncher: ObservableObject {
     @Published var isLaunching = false
+    @Published var launchStatus: String = ""
     @Published var launchError: String? = nil
+    @Published var needsJRE = false
     
     private let appState: AppState
     
@@ -11,10 +13,27 @@ class GameLauncher: ObservableObject {
         self.appState = appState
     }
     
-    /// Launch Minecraft with the correct arguments
+    /// Check if JRE is installed
+    var isJREInstalled: Bool {
+        let jrePath = PojavBridge.jrePath()
+        let fm = FileManager.default
+        return fm.fileExists(atPath: jrePath ?? "")
+    }
+    
+    /// Launch Minecraft
     func launchGame(versionId: String, loader: ModLoader, inputMode: InputMode) {
         isLaunching = true
         launchError = nil
+        
+        // Check JRE
+        if !isJREInstalled {
+            launchError = "Java Runtime (JRE) not found.\n\nYou need to install a JRE for iOS to run Minecraft.\n\nPlace the JRE folder in:\nFiles → Lapis → jre/"
+            needsJRE = true
+            isLaunching = false
+            return
+        }
+        
+        launchStatus = "Preparing game..."
         
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -25,14 +44,21 @@ class GameLauncher: ObservableObject {
         let modsFolderName = "mods-\(versionId)-\(loader.rawValue.lowercased())"
         let modsDir = lapisRoot.appendingPathComponent("mods/\(modsFolderName)")
         
-        // Create game directory
         try? fm.createDirectory(at: gameDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
-        // Build classpath from downloaded libraries
+        // Check client.jar exists
+        let clientJar = versionDir.appendingPathComponent("\(versionId).jar")
+        if !fm.fileExists(atPath: clientJar.path) {
+            launchError = "Game files not downloaded.\nClient jar not found at:\n\(clientJar.path)"
+            isLaunching = false
+            return
+        }
+        
+        launchStatus = "Building classpath..."
         let classpath = buildClasspath(versionDir: versionDir, libDir: libDir, versionId: versionId)
         
-        // Build JVM arguments
+        launchStatus = "Preparing JVM arguments..."
         let jvmArgs = buildJVMArguments(
             versionId: versionId,
             gameDir: gameDir.path,
@@ -42,7 +68,6 @@ class GameLauncher: ObservableObject {
             classpath: classpath
         )
         
-        // Build game arguments
         let gameArgs = buildGameArguments(
             versionId: versionId,
             gameDir: gameDir.path,
@@ -52,24 +77,32 @@ class GameLauncher: ObservableObject {
             playerUUID: appState.playerUUID
         )
         
-        // Store input mode preference
         UserDefaults.standard.set(inputMode == .touch ? "touch" : "keyboard", forKey: "lapis_input_mode")
         
-        // Call PojavLauncher's native JVM launch function
-        launchJVM(jvmArgs: jvmArgs, gameArgs: gameArgs)
+        launchStatus = "Starting Minecraft..."
+        
+        // Launch on background thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let allArgs = jvmArgs + ["net.minecraft.client.main.Main"] + gameArgs
+            let result = PojavBridge.launchJVM(withArgs: allArgs)
+            
+            DispatchQueue.main.async {
+                if result != 0 {
+                    self?.launchError = "Minecraft exited with code \(result)\n\nPossible causes:\n• JRE incompatible with iOS\n• Missing libraries\n• JIT not enabled"
+                }
+                self?.isLaunching = false
+            }
+        }
     }
     
-    // MARK: - Build Classpath
     private func buildClasspath(versionDir: URL, libDir: URL, versionId: String) -> String {
         var paths: [String] = []
         
-        // Add client.jar
         let clientJar = versionDir.appendingPathComponent("\(versionId).jar")
         if FileManager.default.fileExists(atPath: clientJar.path) {
             paths.append(clientJar.path)
         }
         
-        // Add all library .jars recursively
         if let enumerator = FileManager.default.enumerator(at: libDir, includingPropertiesForKeys: nil) {
             while let file = enumerator.nextObject() as? URL {
                 if file.pathExtension == "jar" {
@@ -81,7 +114,6 @@ class GameLauncher: ObservableObject {
         return paths.joined(separator: ":")
     }
     
-    // MARK: - JVM Arguments
     private func buildJVMArguments(versionId: String, gameDir: String, modsDir: String, assetsDir: String, loader: ModLoader, classpath: String) -> [String] {
         let ramMB = UserDefaults.standard.integer(forKey: "lapis_ram") > 0
             ? UserDefaults.standard.integer(forKey: "lapis_ram")
@@ -99,7 +131,6 @@ class GameLauncher: ObservableObject {
             "-cp", classpath,
         ]
         
-        // Mod loader specific args
         switch loader {
         case .fabric:
             args.append("-Dfabric.modsDir=\(modsDir)")
@@ -115,7 +146,6 @@ class GameLauncher: ObservableObject {
         return args
     }
     
-    // MARK: - Game Arguments
     private func buildGameArguments(versionId: String, gameDir: String, assetsDir: String, accessToken: String, playerName: String, playerUUID: String) -> [String] {
         return [
             "--username", playerName,
@@ -128,22 +158,5 @@ class GameLauncher: ObservableObject {
             "--userType", "msa",
             "--versionType", "Lapis"
         ]
-    }
-    
-    // MARK: - Native JVM Launch (calls PojavLauncher C code)
-    private func launchJVM(jvmArgs: [String], gameArgs: [String]) {
-        // Convert Swift arrays to C-compatible format
-        let allArgs = jvmArgs + ["net.minecraft.client.main.Main"] + gameArgs
-        
-        // Call the native PojavLauncher function to start the JVM
-        // This is bridged via the C header (Lapis-Bridging-Header.h)
-        let result = PojavBridge.launchJVM(withArgs: allArgs)
-        
-        if result != 0 {
-            DispatchQueue.main.async {
-                self.launchError = "JVM exited with code \(result)"
-                self.isLaunching = false
-            }
-        }
     }
 }

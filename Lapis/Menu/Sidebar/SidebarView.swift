@@ -8,9 +8,11 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // MARK: - Logo
             VStack(spacing: LapisTheme.Spacing.xs) {
-                Text("L")
-                    .font(.system(size: 24, weight: .black, design: .rounded))
-                    .foregroundColor(LapisTheme.Colors.accent)
+                Image("lapis")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: LapisTheme.Radius.small))
             }
             .frame(height: 56)
             .frame(maxWidth: .infinity)
