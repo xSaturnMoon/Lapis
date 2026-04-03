@@ -230,18 +230,16 @@ struct HomeView: View {
         guard let version = appState.selectedVersion else { return }
         
         // Ensure JRE is available
-        guard let jrePath = setupJRE() else {
-            launchErrorText = "Java Runtime (JRE) not found.\n\nThe JRE should be bundled with the app. Try reinstalling Lapis."
-            showLaunchError = true
-            return
+        if let jrePath = setupJRE() {
+            PojavBridge.setJavaHome(jrePath)
         }
-        
-        PojavBridge.setJavaHome(jrePath)
         
         // Check game files
         if downloader.isVersionDownloaded(version.id) {
-            launchGame()
+            // Files already downloaded — launch
+            doLaunch(version: version, mode: mode)
         } else {
+            // Need to download first
             withAnimation { showDownloadProgress = true }
             Task {
                 await downloader.downloadVersion(version.id)
@@ -261,31 +259,130 @@ struct HomeView: View {
         let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre")
         if fm.fileExists(atPath: bundleJRE.path) {
             try? fm.createDirectory(at: docsJRE.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? fm.copyItem(at: bundleJRE, to: docsJRE)
-            return docsJRE.path
+            do {
+                try fm.copyItem(at: bundleJRE, to: docsJRE)
+            } catch {
+                NSLog("[Lapis] Failed to copy JRE: %@", error.localizedDescription)
+            }
+            if fm.fileExists(atPath: docsJRE.path) {
+                return docsJRE.path
+            }
         }
         
         return nil
     }
     
+    private func doLaunch(version: GameVersion, mode: InputMode) {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let lapisRoot = docs.appendingPathComponent("Lapis")
+        
+        // Validate JRE
+        guard let jrePath = setupJRE() else {
+            launchErrorText = "Java Runtime (JRE) not found.\n\nThe JRE should be bundled with the app. Try reinstalling Lapis."
+            showLaunchError = true
+            return
+        }
+        
+        // Validate libjli.dylib before dlopen
+        let jliPath = (jrePath as NSString).appendingPathComponent("lib/libjli.dylib")
+        if !fm.fileExists(atPath: jliPath) {
+            launchErrorText = "JRE is incomplete.\n\nlibjli.dylib not found at:\n\(jliPath)\n\nThe JRE may not have been bundled correctly."
+            showLaunchError = true
+            return
+        }
+        
+        // Validate client.jar
+        let versionDir = lapisRoot.appendingPathComponent("versions/\(version.id)")
+        let clientJar = versionDir.appendingPathComponent("\(version.id).jar")
+        if !fm.fileExists(atPath: clientJar.path) {
+            launchErrorText = "Game files not found.\nPlease re-download."
+            showLaunchError = true
+            return
+        }
+        
+        // Save input mode
+        UserDefaults.standard.set(mode == .touch ? "touch" : "keyboard", forKey: "lapis_input_mode")
+        PojavBridge.setJavaHome(jrePath)
+        
+        // Build args
+        let libDir = lapisRoot.appendingPathComponent("libraries")
+        let gameDir = lapisRoot.appendingPathComponent("game")
+        let modsDir = lapisRoot.appendingPathComponent("mods/mods-\(version.id)-\(appState.selectedLoader.rawValue.lowercased())")
+        let assetsDir = lapisRoot.appendingPathComponent("assets")
+        
+        try? fm.createDirectory(at: gameDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
+        
+        // Build classpath
+        var cpPaths = [clientJar.path]
+        if let enumerator = fm.enumerator(at: libDir, includingPropertiesForKeys: nil) {
+            while let file = enumerator.nextObject() as? URL {
+                if file.pathExtension == "jar" { cpPaths.append(file.path) }
+            }
+        }
+        let classpath = cpPaths.joined(separator: ":")
+        
+        let ramMB = max(UserDefaults.standard.integer(forKey: "lapis_ram"), 1024)
+        
+        var jvmArgs: [String] = [
+            "-Xmx\(ramMB)M", "-Xms\(ramMB / 2)M",
+            "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200",
+            "-Dfile.encoding=UTF-8",
+            "-Djava.io.tmpdir=\(NSTemporaryDirectory())",
+            "-Dos.name=iOS",
+            "-cp", classpath,
+        ]
+        
+        let gameArgs: [String] = [
+            "--username", appState.playerName,
+            "--version", version.id,
+            "--gameDir", gameDir.path,
+            "--assetsDir", assetsDir.path,
+            "--assetIndex", version.id,
+            "--uuid", appState.playerUUID,
+            "--accessToken", appState.accessToken,
+            "--userType", "msa",
+            "--versionType", "Lapis"
+        ]
+        
+        let allArgs = jvmArgs + ["net.minecraft.client.main.Main"] + gameArgs
+        
+        NSLog("[Lapis] Ready to launch with %d args", allArgs.count)
+        NSLog("[Lapis] JRE: %@", jrePath)
+        NSLog("[Lapis] JLI: %@", jliPath)
+        
+        // Launch on background thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Safe dlopen check first (RTLD_LAZY won't execute constructors)
+            let testHandle = dlopen(jliPath, RTLD_LAZY)
+            if testHandle == nil {
+                let errMsg = String(cString: dlerror())
+                NSLog("[Lapis] dlopen FAILED: %@", errMsg)
+                DispatchQueue.main.async { [self] in
+                    self.launchErrorText = "Cannot load Java Runtime.\n\n\(errMsg)\n\nMake sure JIT is enabled via StikDebug or TrollStore before launching."
+                    self.showLaunchError = true
+                }
+                return
+            }
+            dlclose(testHandle)
+            
+            NSLog("[Lapis] dlopen OK — launching JVM")
+            let result = PojavBridge.launchJVM(withArgs: allArgs)
+            
+            DispatchQueue.main.async { [self] in
+                if result != 0 {
+                    self.launchErrorText = "Minecraft exited with code \(result)"
+                    self.showLaunchError = true
+                }
+            }
+        }
+    }
+    
     private func launchGame() {
         guard let version = appState.selectedVersion,
               let mode = selectedInputMode else { return }
-        
-        if let jrePath = setupJRE() {
-            PojavBridge.setJavaHome(jrePath)
-        }
-        
-        let launcher = GameLauncher(appState: appState)
-        launcher.launchGame(
-            versionId: version.id,
-            loader: appState.selectedLoader,
-            inputMode: mode
-        )
-        
-        if let error = launcher.launchError {
-            launchErrorText = error
-            showLaunchError = true
-        }
+        doLaunch(version: version, mode: mode)
     }
 }
+
