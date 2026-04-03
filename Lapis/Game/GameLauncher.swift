@@ -13,11 +13,16 @@ class GameLauncher: ObservableObject {
         self.appState = appState
     }
     
-    /// Check if JRE is installed
+    /// Check if JRE is installed (checks bundle and Documents)
     var isJREInstalled: Bool {
-        let jrePath = PojavBridge.jrePath()
         let fm = FileManager.default
-        return fm.fileExists(atPath: jrePath ?? "")
+        // Check bundle first
+        let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre").path
+        if fm.fileExists(atPath: bundleJRE) { return true }
+        // Check Documents
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let docsJRE = docs.appendingPathComponent("Lapis/jre").path
+        return fm.fileExists(atPath: docsJRE)
     }
     
     /// Launch Minecraft

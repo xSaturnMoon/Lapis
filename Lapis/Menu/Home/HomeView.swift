@@ -9,7 +9,6 @@ struct HomeView: View {
     @State private var selectedInputMode: InputMode? = nil
     @State private var showLaunchError = false
     @State private var launchErrorText = ""
-    @State private var jitAvailable = false
     
     var body: some View {
         ZStack {
@@ -46,11 +45,6 @@ struct HomeView: View {
             Button("OK") {}
         } message: {
             Text(launchErrorText)
-        }
-        .task {
-            // Check JIT safely on background
-            let available = PojavBridge.isJITAvailable()
-            await MainActor.run { jitAvailable = available }
         }
     }
     
@@ -153,12 +147,12 @@ struct HomeView: View {
             }
             Spacer()
             
-            // JIT status (uses @State, not direct call)
+            // Static JIT reminder (actual JIT enabled via StikDebug/TrollStore)
             HStack(spacing: 4) {
-                Circle()
-                    .fill(jitAvailable ? LapisTheme.Colors.success : LapisTheme.Colors.warning)
-                    .frame(width: 6, height: 6)
-                Text(jitAvailable ? "JIT" : "No JIT")
+                Image(systemName: "bolt.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(LapisTheme.Colors.warning)
+                Text("Enable JIT")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(LapisTheme.Colors.textMuted)
             }
