@@ -216,7 +216,33 @@ struct HomeView: View {
     private func startGameFlow(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
         
-        // Check if files are already downloaded
+        // Step 1: Check JRE
+        let jreDownloader = JREDownloader()
+        if !jreDownloader.isJREInstalled {
+            launchErrorText = """
+            Java Runtime (JRE) not installed.
+            
+            To play Minecraft, you need an OpenJDK 17 JRE for iOS.
+            
+            How to install:
+            1. Download from PojavLauncher's GitHub:
+               github.com/PojavLauncherTeam/android-openjdk-build-multiarch
+               → Releases → "JRE17 (JIT) for sandboxed iOS"
+            
+            2. Extract the .tar.xz file
+            
+            3. Place the extracted contents in:
+               Files → Lapis → jre/
+            
+            The folder should contain:
+               jre/lib/libjli.dylib
+               jre/bin/java
+            """
+            showLaunchError = true
+            return
+        }
+        
+        // Step 2: Check game files
         if downloader.isVersionDownloaded(version.id) {
             launchGame()
         } else {
@@ -230,6 +256,12 @@ struct HomeView: View {
     private func launchGame() {
         guard let version = appState.selectedVersion,
               let mode = selectedInputMode else { return }
+        
+        // Set JRE path from Documents
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let jrePath = docs.appendingPathComponent("Lapis/jre").path
+        PojavBridge.setJavaHome(jrePath)
         
         let launcher = GameLauncher(appState: appState)
         launcher.launchGame(
