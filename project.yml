@@ -21,6 +21,8 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: Lapis
+      - path: Lapis/caciocavallo
+        type: folder
     settings:
       base:
         INFOPLIST_FILE: Lapis/Info.plist
