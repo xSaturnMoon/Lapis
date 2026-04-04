@@ -137,6 +137,7 @@ class GameLauncher {
             "-Dfile.encoding=UTF-8",
             "-Djava.io.tmpdir=\(NSTemporaryDirectory())",
             "-Dos.name=iOS",
+            "-XstartOnFirstThread",               // Crucial: Tells libjli NOT to invoke UIApplicationMain
             "-XX:+UseSerialGC",
             "-XX:MaxGCPauseMillis=200",
             "-XX:-UseCompressedOops",             // Crucial for Sideloadly! Avoids huge virtual memory allocations
