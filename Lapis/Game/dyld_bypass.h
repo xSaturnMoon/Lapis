@@ -19,15 +19,7 @@
 #define F_CHECK_LV 98
 #endif
 
-// fsignatures_t from kernel headers
-#ifndef _FSIGNATURES_T
-#define _FSIGNATURES_T
-typedef struct {
-    off_t       fs_file_start;
-    void        *fs_blob_start;
-    size_t      fs_blob_size;
-} fsignatures_t;
-#endif
+// fsignatures_t is already defined in <fcntl.h> included above — do not redefine
 
 // Inline assembly macro for ARM64
 #define LAPIS_ASM(...) __asm__(#__VA_ARGS__)
