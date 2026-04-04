@@ -4,6 +4,7 @@
 
 #import "LapisLauncher.h"
 #import "dyld_bypass.h"
+#import "fishhook.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -13,32 +14,45 @@
 #include <pthread.h>
 #import <objc/runtime.h>
 
-// Intercetta e blocca tentativi di creare una seconda UIApplication tramite Swizzling ObjC
-@interface UIApplication (LapisGuard)
-- (id)lapis_init;
-@end
+// ============================================================
+// MARK: - UIApplicationMain Hook (fishhook)
+// Prevents the JVM from calling UIApplicationMain() again
+// while our app's UIApplication is already running.
+// On iOS 26, the ObjC swizzle on -[UIApplication init] is not
+// enough — the JVM calls the C function UIApplicationMain()
+// directly, which iOS 26 rejects with NSInternalInconsistencyException.
+// ============================================================
 
-@implementation UIApplication (LapisGuard)
-- (id)lapis_init {
-    @try {
-        if ([UIApplication sharedApplication] != nil) {
-            NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
-            return [UIApplication sharedApplication];
-        }
-    } @catch (NSException *e) {}
-    
-    // Altrimenti procedi con l'inizializzazione originale
-    return [self lapis_init];
+typedef int (*UIApplicationMain_t)(int argc, char * _Nullable * _Nonnull argv,
+    NSString * _Nullable principalClassName,
+    NSString * _Nullable delegateClassName);
+
+static UIApplicationMain_t original_UIApplicationMain = NULL;
+
+static int lapis_UIApplicationMain(int argc, char * _Nullable * _Nonnull argv,
+    NSString * _Nullable principalClassName,
+    NSString * _Nullable delegateClassName)
+{
+    // If UIApplication already exists, silently block the second call
+    UIApplication *existing = nil;
+    @try { existing = [UIApplication sharedApplication]; } @catch (...) {}
+    if (existing != nil) {
+        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplicationMain() call");
+        return 0;
+    }
+    return original_UIApplicationMain(argc, argv, principalClassName, delegateClassName);
 }
-@end
 
-static void installUIApplicationGuard(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSLog(@"[Lapis:Guard] Installing swizzle on -[UIApplication init]");
-        Method origMethod = class_getInstanceMethod([UIApplication class], @selector(init));
-        Method swizzledMethod = class_getInstanceMethod([UIApplication class], @selector(lapis_init));
-        method_exchangeImplementations(origMethod, swizzledMethod);
+static void hookUIApplicationMain(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSLog(@"[Lapis:Guard] Hooking UIApplicationMain via fishhook");
+        rebind_symbols((struct rebinding[1]){{
+            "UIApplicationMain",
+            (void *)lapis_UIApplicationMain,
+            (void **)&original_UIApplicationMain
+        }}, 1);
+        NSLog(@"[Lapis:Guard] UIApplicationMain hook installed");
     });
 }
 
@@ -87,19 +101,16 @@ static void setupDefaultEnvironment(void) {
     setenv("LD_LIBRARY_PATH", "", 1);
     
     // GL4ES settings
-    setenv("LIBGL_NOINTOVLHACK", "1", 1);  // Disable overloaded functions hack (MC 1.17+)
-    setenv("LIBGL_NORMALIZE", "1", 1);       // Fix white color on banner/sheep
+    setenv("LIBGL_NOINTOVLHACK", "1", 1);
+    setenv("LIBGL_NORMALIZE", "1", 1);
     
     // Mesa/Zink settings
     setenv("MESA_GL_VERSION_OVERRIDE", "4.1", 1);
     
-    // Run JVM in separate thread
-    setenv("HACK_IGNORE_START_ON_FIRST_THREAD", "1", 1);
-    
     // Set LAPIS_HOME for the dyld bypass to know which files to allow
     if (_gameHome) {
         setenv("LAPIS_HOME", _gameHome.UTF8String, 1);
-        setenv("POJAV_HOME", _gameHome.UTF8String, 1); // Compat with PojavLauncher libs
+        setenv("POJAV_HOME", _gameHome.UTF8String, 1);
     }
     
     if (_javaHome) {
@@ -137,6 +148,10 @@ void LapisEngine_init(void) {
     // Initialize the dyld bypass — MUST be done before any dlopen
     init_bypassDyldLibValidation();
     _bypassReady = YES;
+    
+    // Install UIApplicationMain hook immediately at engine init,
+    // long before the JVM starts, so it's always ready
+    hookUIApplicationMain();
     
     NSLog(@"[Lapis:Engine] Engine initialized. Dyld bypass: %@",
           _bypassReady ? @"ACTIVE" : @"FAILED");
@@ -176,16 +191,16 @@ static void* jvm_thread_func(void* arg) {
     
     jvmArgs->result = jvmArgs->pJLI_Launch(
         jvmArgs->margc, jvmArgs->margv,
-        0, NULL,    // jargc, jargv
-        0, NULL,    // appclassc, appclassv
-        "21.0-lapis",       // fullversion
-        "21",               // dotversion
-        "java",             // prgname
-        "openjdk",          // lname
-        JNI_FALSE,          // javaargs
-        JNI_TRUE,           // cpwildcard
-        JNI_FALSE,          // javaw
-        0                   // ergo
+        0, NULL,
+        0, NULL,
+        "21.0-lapis",
+        "21",
+        "java",
+        "openjdk",
+        JNI_FALSE,
+        JNI_TRUE,
+        JNI_FALSE,
+        0
     );
     
     return NULL;
@@ -202,7 +217,6 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
             NSString *logPath = [_gameHome stringByAppendingPathComponent:@"latestlog.txt"];
             freopen([logPath UTF8String], "w", stdout);
             freopen([logPath UTF8String], "w", stderr);
-            // Disable buffering to capture standard output instantly
             setvbuf(stdout, NULL, _IONBF, 0);
             setvbuf(stderr, NULL, _IONBF, 0);
             NSLog(@"[Lapis:Engine] Logs redirected to: %@", logPath);
@@ -238,7 +252,7 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         NSLog(@"[Lapis:Engine] JLI path: %@", jliPath);
         setenv("INTERNAL_JLI_PATH", jliPath.UTF8String, 1);
         
-        // 4. Load JRE via dlopen (dyld bypass must be active for this to work)
+        // 4. Load JRE via dlopen
         NSLog(@"[Lapis:Engine] Loading JRE library...");
         void *libjli = dlopen(jliPath.UTF8String, RTLD_GLOBAL);
         
@@ -277,7 +291,6 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         margv[margc] = NULL;
         
         // 7. Reset signal handlers before JVM launch
-        // The dyld bypass set SIGBUS to SIG_IGN; JVM needs default handlers
         signal(SIGSEGV, SIG_DFL);
         signal(SIGPIPE, SIG_DFL);
         signal(SIGBUS, SIG_DFL);
@@ -286,7 +299,7 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         
         NSLog(@"[Lapis:Engine] Calling JLI_Launch with %d arguments on custom pthread with 8MB stack...", margc);
         
-        // 8. Launch JVM on custom thread with enough stack memory!
+        // 8. Launch JVM on custom thread with 8MB stack
         JVMArgs jvmArgs;
         jvmArgs.pJLI_Launch = pJLI_Launch;
         jvmArgs.margc = margc;
@@ -295,9 +308,8 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         
         pthread_attr_t attr;
         pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, 8 * 1024 * 1024); // 8MB stack
+        pthread_attr_setstacksize(&attr, 8 * 1024 * 1024);
         
-        installUIApplicationGuard();
         pthread_t jvm_thread;
         int pt_res = pthread_create(&jvm_thread, &attr, jvm_thread_func, &jvmArgs);
         pthread_attr_destroy(&attr);
@@ -317,8 +329,7 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         free(margv);
         
         if (result != 0) {
-            _lastError = [NSString stringWithFormat:
-                @"JVM exited with code %d", result];
+            _lastError = [NSString stringWithFormat:@"JVM exited with code %d", result];
             NSLog(@"[Lapis:Engine] %@", _lastError);
         } else {
             NSLog(@"[Lapis:Engine] JVM exited normally");
