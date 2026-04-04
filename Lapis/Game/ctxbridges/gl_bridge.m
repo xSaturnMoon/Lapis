@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import "SurfaceViewController.h"
+
 
 #include <dlfcn.h>
 #include "bridge_tbl.h"
@@ -91,7 +91,8 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
     }
     if (!bindResult) NSDebugLog(@"EGLBridge: bind failed: %p\n", handle.eglGetError());
 
-    bundle->surface = handle.eglCreateWindowSurface(g_EglDisplay, bundle->config, (__bridge EGLNativeWindowType)SurfaceViewController.surface.layer, NULL);
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
+    bundle->surface = handle.eglCreateWindowSurface(g_EglDisplay, bundle->config, (__bridge EGLNativeWindowType)window.layer, NULL);
     if (!bundle->surface) {
         NSDebugLog(@"EGLBridge: eglCreateWindowSurface finished with error: 0x%x", handle.eglGetError());
         free(bundle);

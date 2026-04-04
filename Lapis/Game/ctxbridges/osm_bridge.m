@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#import "SurfaceViewController.h"
+
 
 #include <dlfcn.h>
 #include "environ.h"
@@ -81,7 +81,8 @@ void osm_swap_buffers() {
     dispatch_async(dispatch_get_main_queue(), ^{
     CGDataProviderRef bitmapProvider = CGDataProviderCreateWithData(NULL, bundle.buffer, windowWidth * windowHeight * 4, NULL);
     CGImageRef bitmap = CGImageCreate(windowWidth, windowHeight, 8, 32, 4 * windowWidth, bundle.color_space, kCGImageAlphaNoneSkipLast | kCGBitmapByteOrderDefault, bitmapProvider, NULL, FALSE, kCGRenderingIntentDefault);
-    SurfaceViewController.surface.layer.contents = (__bridge id)bitmap;
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
+    window.layer.contents = (__bridge id)bitmap;
     CGImageRelease(bitmap);
     CGDataProviderRelease(bitmapProvider);
     });
