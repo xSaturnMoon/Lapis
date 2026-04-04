@@ -62,5 +62,5 @@ int launchJVM(int argc, const char **argv, const char *jli_path) {
                    "1.8.0-internal",
                    "1.8",
                    "java", "openjdk",
-                   JNI_FALSE, JNI_TRUE, JNI_FALSE, JNI_TRUE);
+                   0, 1, 0, 1);
 }
