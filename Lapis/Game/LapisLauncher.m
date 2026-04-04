@@ -14,21 +14,16 @@
 #import <objc/runtime.h>
 
 // Intercetta e blocca tentativi di creare una seconda UIApplication
+static void lapisUncaughtExceptionHandler(NSException *exception) {
+    if ([exception.reason containsString:@"UIApplication instance"]) {
+        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
+        return;
+    }
+    NSLog(@"[Lapis:Engine] Uncaught exception: %@", exception);
+}
+
 static void installUIApplicationGuard(void) {
-    // Swizzle UIApplication sharedApplication per evitare il crash
-    // quando il JRE tenta di inizializzare UIKit internamente
-    Method origMethod = class_getInstanceMethod([UIApplication class], 
-                                                 @selector(init));
-    // Registra un handler per l'eccezione NSInternalInconsistencyException
-    // che viene lanciata quando il JRE tenta di creare UIApplication
-    NSSetUncaughtExceptionHandler(^(NSException *exception) {
-        if ([exception.reason containsString:@"UIApplication instance"]) {
-            NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
-            return; // Ignora silenziosamente
-        }
-        // Rilancia altre eccezioni
-        NSLog(@"[Lapis:Engine] Uncaught exception: %@", exception);
-    });
+    NSSetUncaughtExceptionHandler(&lapisUncaughtExceptionHandler);
 }
 
 extern char **environ;
