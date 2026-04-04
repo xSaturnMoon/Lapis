@@ -77,14 +77,32 @@ class GameLauncher {
         
         guard isJREValid(jrePath) else {
             return """
-            JRE non valido o non compatibile con iOS.
-            
-            Il JRE nel bundle è per macOS — serve quello di PojavLauncher per iOS.
-            
+            JRE non valido o non compatibile.
             Scarica il JRE iOS da:
             github.com/PojavLauncherTeam/PojavLauncher_iOS/releases
-            
             Poi copialo in: Files → On My iPad → Lapis → jre/
+            """
+        }
+        
+        // --- CACIOCAVALLO VALIDATION ---
+        // Caciocavallo è l'unico modo per non far crashare UIApplicationMain.
+        let cacioDir = lapisRoot.appendingPathComponent("caciocavallo")
+        let cacioFile1 = cacioDir.appendingPathComponent("caciocavallo-1.0.0.jar") // Adjust assuming it's in caciocavallo folder
+        var cacioFound = false
+        if let enumerator = fm.enumerator(at: lapisRoot, includingPropertiesForKeys: nil) {
+            while let file = enumerator.nextObject() as? URL {
+                if file.pathExtension == "jar" && file.lastPathComponent.contains("cacio") {
+                    cacioFound = true; break;
+                }
+            }
+        }
+        
+        if !cacioFound {
+            return """
+            CRASH PREVENTIVO: Caciocavallo mancante!
+            
+            Senza Caciocavallo, Java chiama UIApplicationMain e l'app crasha istantaneamente (There can only be one UIApplication instance).
+            Devi OBBLIGATORIAMENTE scaricare caciocavallo.jar e metterlo nella cartella Lapis/caciocavallo/!
             """
         }
         
@@ -118,6 +136,14 @@ class GameLauncher {
                 if file.pathExtension == "jar" { cpPaths.append(file.path) }
             }
         }
+        
+        // Add caciocavallo to classpath
+        if let enumerator = fm.enumerator(at: cacioDir, includingPropertiesForKeys: nil) {
+             while let file = enumerator.nextObject() as? URL {
+                 if file.pathExtension == "jar" { cpPaths.append(file.path) }
+             }
+        }
+        
         // Add bundled libs
         let bundleLibs = Bundle.main.bundleURL.appendingPathComponent("libs")
         if fm.fileExists(atPath: bundleLibs.path),
@@ -156,8 +182,12 @@ class GameLauncher {
             "-XX:-UseCompressedClassPointers",
             "-XX:+DisablePrimordialThreadGuardPages",
             "-Dfml.earlyprogresswindow=false",
-            "-Djava.awt.headless=true",
-            "-Dapple.awt.UIElement=true",
+            "-Djava.awt.headless=false",
+            "-Dawt.toolkit=com.github.caciocavallosilano.cacio.ctc.CTCToolkit",
+            "-Djava.awt.graphicsenv=com.github.caciocavallosilano.cacio.ctc.CTCGraphicsEnvironment",
+            "-Dcacio.font.fontmanager=sun.awt.X11FontManager",
+            "-Dcacio.font.fontscaler=sun.font.FreetypeFontScaler",
+            "-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel"
         ]
         
         // Java 17 module system flags (needed for Caciocavallo and modern MC)
