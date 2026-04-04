@@ -44,6 +44,17 @@ static void installObjCGuard(void) {
         Method orig = class_getInstanceMethod([UIApplication class], @selector(init));
         Method swizzle = class_getInstanceMethod([UIApplication class], @selector(lapis_init));
         method_exchangeImplementations(orig, swizzle);
+        
+        // Blindaggio aggiuntivo su NSApplication (MacOS) per impedire a libglfw di avviare AppKit!
+        Class nsAppClass = NSClassFromString(@"NSApplication");
+        if (nsAppClass) {
+            NSLog(@"[Lapis:Guard] Installing swizzle on +[NSApplication sharedApplication]");
+            Method origNsApp = class_getClassMethod(nsAppClass, NSSelectorFromString(@"sharedApplication"));
+            Method swizzleNsApp = class_getClassMethod([UIApplication class], NSSelectorFromString(@"sharedApplication"));
+            if (origNsApp && swizzleNsApp) {
+                method_exchangeImplementations(origNsApp, swizzleNsApp);
+            }
+        }
     });
 }
 
@@ -63,7 +74,7 @@ static int lapis_UIApplicationMain(int argc, char * _Nullable * _Nonnull argv,
     UIApplication *existing = nil;
     @try { existing = [UIApplication sharedApplication]; } @catch (...) {}
     if (existing != nil) {
-        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplicationMain() call. Thread suspended.");
+        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplicationMain() or NSApplicationLoad() call. Thread suspended.");
         // Non possiamo ritornare: Java si aspetta che UIApplicationMain blocchi in eterno sulla runloop!
         while (1) { sleep(1000); }
         return 0;
@@ -71,15 +82,29 @@ static int lapis_UIApplicationMain(int argc, char * _Nullable * _Nonnull argv,
     return original_UIApplicationMain(argc, argv, principalClassName, delegateClassName);
 }
 
+static BOOL (*original_NSApplicationLoad)(void) = NULL;
+static BOOL lapis_NSApplicationLoad(void) {
+    NSLog(@"[Lapis:Guard] Blocked NSApplicationLoad() call from libglfw!");
+    while(1) { sleep(1000); }
+    return YES;
+}
+
 static void hookUIApplicationMain(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        NSLog(@"[Lapis:Guard] Hooking UIApplicationMain via fishhook");
-        rebind_symbols((struct rebinding[1]){{
-            "UIApplicationMain",
-            (void *)lapis_UIApplicationMain,
-            (void **)&original_UIApplicationMain
-        }}, 1);
+        NSLog(@"[Lapis:Guard] Hooking UIApplicationMain and NSApplicationLoad via fishhook");
+        rebind_symbols((struct rebinding[2]){
+            {
+                "UIApplicationMain",
+                (void *)lapis_UIApplicationMain,
+                (void **)&original_UIApplicationMain
+            },
+            {
+                "NSApplicationLoad",
+                (void *)lapis_NSApplicationLoad,
+                (void **)&original_NSApplicationLoad
+            }
+        }, 2);
         NSLog(@"[Lapis:Guard] UIApplicationMain hook installed");
     });
 }
