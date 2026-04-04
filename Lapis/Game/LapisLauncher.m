@@ -10,6 +10,7 @@
 #include <dlfcn.h>
 #include <signal.h>
 #include <string.h>
+#include <pthread.h>
 
 extern char **environ;
 
@@ -117,6 +118,37 @@ NSString* LapisEngine_getLastError(void) {
     return _lastError;
 }
 
+// ============================================================
+// MARK: - JVM Thread Setup
+// ============================================================
+
+typedef struct {
+    JLI_Launch_func *pJLI_Launch;
+    int margc;
+    const char **margv;
+    int result;
+} JVMArgs;
+
+static void* jvm_thread_func(void* arg) {
+    JVMArgs *jvmArgs = (JVMArgs *)arg;
+    
+    jvmArgs->result = jvmArgs->pJLI_Launch(
+        jvmArgs->margc, jvmArgs->margv,
+        0, NULL,    // jargc, jargv
+        0, NULL,    // appclassc, appclassv
+        "17.0-lapis",       // fullversion
+        "17",               // dotversion
+        "java",             // prgname
+        "openjdk",          // lname
+        JNI_FALSE,          // javaargs
+        JNI_TRUE,           // cpwildcard
+        JNI_FALSE,          // javaw
+        0                   // ergo
+    );
+    
+    return NULL;
+}
+
 int LapisEngine_launchJVM(NSArray<NSString *> *args) {
     @autoreleasepool {
         NSLog(@"[Lapis:Engine] ========================================");
@@ -197,22 +229,31 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         signal(SIGILL, SIG_DFL);
         signal(SIGFPE, SIG_DFL);
         
-        NSLog(@"[Lapis:Engine] Calling JLI_Launch with %d arguments...", margc);
+        NSLog(@"[Lapis:Engine] Calling JLI_Launch with %d arguments on custom pthread with 8MB stack...", margc);
         
-        // 8. Launch!
-        int result = pJLI_Launch(
-            margc, margv,
-            0, NULL,    // jargc, jargv
-            0, NULL,    // appclassc, appclassv
-            "17.0-lapis",       // fullversion
-            "17",               // dotversion
-            "java",             // prgname
-            "openjdk",          // lname
-            JNI_FALSE,          // javaargs
-            JNI_TRUE,           // cpwildcard
-            JNI_FALSE,          // javaw
-            0                   // ergo
-        );
+        // 8. Launch JVM on custom thread with enough stack memory!
+        JVMArgs jvmArgs;
+        jvmArgs.pJLI_Launch = pJLI_Launch;
+        jvmArgs.margc = margc;
+        jvmArgs.margv = margv;
+        jvmArgs.result = -1;
+        
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setstacksize(&attr, 8 * 1024 * 1024); // 8MB stack
+        
+        pthread_t jvm_thread;
+        int pt_res = pthread_create(&jvm_thread, &attr, jvm_thread_func, &jvmArgs);
+        pthread_attr_destroy(&attr);
+        
+        if (pt_res == 0) {
+            pthread_join(jvm_thread, NULL);
+        } else {
+            NSLog(@"[Lapis:Engine] ERROR: pthread_create failed with code %d", pt_res);
+            jvmArgs.result = -4;
+        }
+        
+        int result = jvmArgs.result;
         
         for (int i = 0; i < margc; i++) {
             free((void *)margv[i]);
