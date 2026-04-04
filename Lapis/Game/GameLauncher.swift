@@ -167,14 +167,10 @@ class GameLauncher {
             "--add-opens=java.base/java.net=ALL-UNNAMED",
         ]
         
-        // Headless AWT (Caciocavallo)
+        // Headless AWT (Native)
         args += [
-            "-Djava.awt.headless=false",
-            "-Dawt.toolkit=com.github.caciocavallosilano.cacio.ctc.CTCToolkit",
-            "-Djava.awt.graphicsenv=com.github.caciocavallosilano.cacio.ctc.CTCGraphicsEnvironment",
-            "-Dcacio.font.fontmanager=sun.awt.X11FontManager",
-            "-Dcacio.font.fontscaler=sun.font.FreetypeFontScaler",
-            "-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel",
+            "-Djava.awt.headless=true",
+            "-Dapple.awt.UIElement=true"
         ]
         
         // Loader-specific flags
