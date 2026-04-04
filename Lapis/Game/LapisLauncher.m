@@ -136,8 +136,8 @@ static void* jvm_thread_func(void* arg) {
         jvmArgs->margc, jvmArgs->margv,
         0, NULL,    // jargc, jargv
         0, NULL,    // appclassc, appclassv
-        "17.0-lapis",       // fullversion
-        "17",               // dotversion
+        "21.0-lapis",       // fullversion
+        "21",               // dotversion
         "java",             // prgname
         "openjdk",          // lname
         JNI_FALSE,          // javaargs

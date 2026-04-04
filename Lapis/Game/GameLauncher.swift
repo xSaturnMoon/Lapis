@@ -124,7 +124,7 @@ class GameLauncher {
         let frameworksPath = Bundle.main.bundleURL.appendingPathComponent("Frameworks").path
         
         var args: [String] = [
-            "java",              // argv[0] = java binary path
+            "java",
             "-Xms128M",
             "-Xmx\(ramMB)M",
             "-Djava.library.path=\(frameworksPath)",
@@ -133,18 +133,22 @@ class GameLauncher {
             "-Duser.timezone=\(TimeZone.current.identifier)",
             "-Dorg.lwjgl.glfw.checkThread0=false",
             "-Dorg.lwjgl.system.allocator=system",
+            "-Dorg.lwjgl.util.NoChecks=true",
             "-Dlog4j2.formatMsgNoLookups=true",
             "-Dfile.encoding=UTF-8",
             "-Djava.io.tmpdir=\(NSTemporaryDirectory())",
-            "-Dos.name=iOS",
-            "-XstartOnFirstThread",               // Crucial: Tells libjli NOT to invoke UIApplicationMain
+            "-Dos.name=Mac OS X",
+            "-Dos.version=10.16",
+            "-Dos.arch=aarch64",
             "-XX:+UseSerialGC",
             "-XX:MaxGCPauseMillis=200",
-            "-XX:-UseCompressedOops",             // Crucial for Sideloadly! Avoids huge virtual memory allocations
-            "-XX:-UseCompressedClassPointers",    // Crucial for Sideloadly!
             "-XX:+UnlockExperimentalVMOptions",
-            "-XX:+DisablePrimordialThreadGuardPages",  // Workaround stack guard crash
-            "-Dfml.earlyprogresswindow=false",         // Disable Forge loading window
+            "-XX:-UseCompressedOops",
+            "-XX:-UseCompressedClassPointers",
+            "-XX:+DisablePrimordialThreadGuardPages",
+            "-Dfml.earlyprogresswindow=false",
+            "-Djava.awt.headless=true",
+            "-Dapple.awt.UIElement=true",
         ]
         
         // Java 17 module system flags (needed for Caciocavallo and modern MC)
@@ -165,12 +169,6 @@ class GameLauncher {
             "--add-opens=java.desktop/sun.java2d=ALL-UNNAMED",
             "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
             "--add-opens=java.base/java.net=ALL-UNNAMED",
-        ]
-        
-        // Headless AWT (Native)
-        args += [
-            "-Djava.awt.headless=true",
-            "-Dapple.awt.UIElement=true"
         ]
         
         // Loader-specific flags
