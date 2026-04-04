@@ -76,7 +76,16 @@ class GameLauncher {
         }
         
         guard isJREValid(jrePath) else {
-            return "JRE is incomplete.\n\nlibjli.dylib not found.\nPlease re-install the JRE."
+            return """
+            JRE non valido o non compatibile con iOS.
+            
+            Il JRE nel bundle è per macOS — serve quello di PojavLauncher per iOS.
+            
+            Scarica il JRE iOS da:
+            github.com/PojavLauncherTeam/PojavLauncher_iOS/releases
+            
+            Poi copialo in: Files → On My iPad → Lapis → jre/
+            """
         }
         
         // 2. Validate game files

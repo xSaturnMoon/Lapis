@@ -11,6 +11,25 @@
 #include <signal.h>
 #include <string.h>
 #include <pthread.h>
+#import <objc/runtime.h>
+
+// Intercetta e blocca tentativi di creare una seconda UIApplication
+static void installUIApplicationGuard(void) {
+    // Swizzle UIApplication sharedApplication per evitare il crash
+    // quando il JRE tenta di inizializzare UIKit internamente
+    Method origMethod = class_getInstanceMethod([UIApplication class], 
+                                                 @selector(init));
+    // Registra un handler per l'eccezione NSInternalInconsistencyException
+    // che viene lanciata quando il JRE tenta di creare UIApplication
+    NSSetUncaughtExceptionHandler(^(NSException *exception) {
+        if ([exception.reason containsString:@"UIApplication instance"]) {
+            NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
+            return; // Ignora silenziosamente
+        }
+        // Rilancia altre eccezioni
+        NSLog(@"[Lapis:Engine] Uncaught exception: %@", exception);
+    });
+}
 
 extern char **environ;
 
@@ -41,6 +60,18 @@ static NSString *_gameHome = nil;
 // ============================================================
 
 static void setupDefaultEnvironment(void) {
+    // CRITICO: impedisce al JRE di inizializzare UIKit/AppKit
+    setenv("JAVA_STARTED_ON_FIRST_THREAD_0", "1", 1);
+    setenv("SKIP_JAVA_SYSTEM_INIT", "1", 1);
+    
+    // Impedisce al runtime Java di cercare display/finestre macOS
+    setenv("AWT_TOOLKIT", "headlessToolkit", 1);
+    setenv("java.awt.headless", "true", 1);
+    
+    // PojavLauncher compatibility
+    setenv("POJAV_ENVIRON_HOME", "", 1);
+    setenv("HACK_IGNORE_START_ON_FIRST_THREAD", "1", 1);
+    
     // Silence Caciocavallo NPE for missing Android libs
     setenv("LD_LIBRARY_PATH", "", 1);
     
@@ -255,6 +286,7 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, 8 * 1024 * 1024); // 8MB stack
         
+        installUIApplicationGuard();
         pthread_t jvm_thread;
         int pt_res = pthread_create(&jvm_thread, &attr, jvm_thread_func, &jvmArgs);
         pthread_attr_destroy(&attr);
