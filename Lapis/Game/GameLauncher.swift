@@ -25,27 +25,22 @@ class GameLauncher {
         let lapisRoot = docs.appendingPathComponent("Lapis")
         let docsJRE = lapisRoot.appendingPathComponent("jre")
         
-        // Check Documents/Lapis/jre first
+        // 1. Check if user provided a custom JRE in Documents/Lapis/jre
         if fm.fileExists(atPath: docsJRE.path) {
-            NSLog("[Lapis:GameLauncher] JRE found in Documents: \(docsJRE.path)")
+            NSLog("[Lapis:GameLauncher] Using custom JRE in Documents: \(docsJRE.path)")
             return docsJRE.path
         }
         
-        // Check app bundle
+        // 2. Otherwise, use the bundled JRE directly! 
+        // DO NOT copy it to Documents. Running it from the bundle ensures it passes 
+        // dyld Library Validation automatically on TrollStore/Sideloading!
         let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre")
         if fm.fileExists(atPath: bundleJRE.path) {
-            NSLog("[Lapis:GameLauncher] JRE found in bundle, copying to Documents...")
-            try? fm.createDirectory(at: lapisRoot, withIntermediateDirectories: true)
-            do {
-                try fm.copyItem(at: bundleJRE, to: docsJRE)
-                NSLog("[Lapis:GameLauncher] JRE copied successfully")
-                return docsJRE.path
-            } catch {
-                NSLog("[Lapis:GameLauncher] Failed to copy JRE: \(error)")
-            }
+            NSLog("[Lapis:GameLauncher] Using bundled JRE directly: \(bundleJRE.path)")
+            return bundleJRE.path
         }
         
-        NSLog("[Lapis:GameLauncher] No JRE found!")
+        NSLog("[Lapis:GameLauncher] No JRE found in bundle or Documents!")
         return nil
     }
     
