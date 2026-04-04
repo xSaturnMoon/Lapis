@@ -130,8 +130,7 @@ class GameLauncher {
         let frameworksPath = Bundle.main.bundleURL.appendingPathComponent("Frameworks").path
         
         var args: [String] = [
-            "\(jrePath)/bin/java",              // argv[0] = java binary path
-            "-XstartOnFirstThread",
+            "java",              // argv[0] = java binary path
             "-Xms128M",
             "-Xmx\(ramMB)M",
             "-Djava.library.path=\(frameworksPath)",
@@ -144,7 +143,7 @@ class GameLauncher {
             "-Dfile.encoding=UTF-8",
             "-Djava.io.tmpdir=\(NSTemporaryDirectory())",
             "-Dos.name=iOS",
-            "-XX:+UseG1GC",
+            "-XX:+UseSerialGC",
             "-XX:MaxGCPauseMillis=200",
             "-XX:+UnlockExperimentalVMOptions",
             "-XX:+DisablePrimordialThreadGuardPages",  // Workaround stack guard crash
@@ -214,16 +213,11 @@ class GameLauncher {
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
         // 7. Launch on background thread
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = LapisEngine_launchJVM(args)
-            
-            if result != 0 {
-                let engineError = LapisEngine_getLastError() ?? "Unknown error"
-                DispatchQueue.main.async {
-                    // Could post a notification or call a delegate here to show the error
-                    NSLog("[Lapis:GameLauncher] Launch failed (code \(result)):\n\(engineError)")
-                }
-            }
+        let result = LapisEngine_launchJVM(args)
+        
+        if result != 0 {
+            let engineError = LapisEngine_getLastError() ?? "Unknown error"
+            return "Launch failed (code \(result)):\n\(engineError)"
         }
         
         return nil

@@ -55,22 +55,9 @@ static int my_fcntl(int fd, int cmd, ...) {
 static void* (*orig_mmap)(void *addr, size_t len, int prot, int flags, int fd, off_t offset) = NULL;
 
 static void* my_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset) {
-    // Remove MAP_JIT restriction if present (MAP_JIT = 0x0800 on macOS/iOS)
-    flags &= ~0x800;
-    
-    void *map = orig_mmap(addr, len, prot, flags, fd, offset);
-    if (map == MAP_FAILED && fd && (prot & PROT_EXEC)) {
-        // Workaround: map RW, copy, then mprotect to desired prot
-        map = orig_mmap(addr, len, PROT_READ | PROT_WRITE,
-                        flags | MAP_PRIVATE | MAP_ANON, 0, 0);
-        void *tmp = orig_mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, offset);
-        if (map != MAP_FAILED && tmp != MAP_FAILED) {
-            memcpy(map, tmp, len);
-            munmap(tmp, len); // munmap uses the original unless we hooked it too
-            mprotect(map, len, prot);
-        }
-    }
-    return map;
+    // Non modificare flags — lascia MAP_JIT intatto
+    // Chiama l'originale direttamente
+    return orig_mmap(addr, len, prot, flags, fd, offset);
 }
 
 // ============================================================

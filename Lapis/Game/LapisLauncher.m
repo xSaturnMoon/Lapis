@@ -183,10 +183,11 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         const char **margv = (const char **)calloc(totalArgs + 1, sizeof(char *));
         
         for (int i = 0; i < totalArgs; i++) {
-            margv[i] = args[i].UTF8String;
+            margv[i] = strdup(args[i].UTF8String);
             NSLog(@"[Lapis:Engine]   arg[%d]: %s", i, margv[i]);
         }
         margc = totalArgs;
+        margv[margc] = NULL;
         
         // 7. Reset signal handlers before JVM launch
         // The dyld bypass set SIGBUS to SIG_IGN; JVM needs default handlers
@@ -213,6 +214,9 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
             0                   // ergo
         );
         
+        for (int i = 0; i < margc; i++) {
+            free((void *)margv[i]);
+        }
         free(margv);
         
         if (result != 0) {
