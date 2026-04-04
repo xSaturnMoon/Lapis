@@ -126,13 +126,7 @@ enum ModLoader: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
     
     var iconName: String {
-        switch self {
-        case .vanilla: return "cube.fill"
-        case .fabric: return "wind"
-        case .forge: return "hammer.fill"
-        case .neoforge: return "flame.fill"
-        case .quilt: return "square.grid.3x3.fill"
-        }
+        return rawValue.lowercased()
     }
 }
 
@@ -196,6 +190,7 @@ struct ModrinthVersionFile: Codable {
 
 struct ModrinthVersion: Codable {
     let id: String
+    let version_number: String?
     let files: [ModrinthVersionFile]
     let game_versions: [String]
     let loaders: [String]

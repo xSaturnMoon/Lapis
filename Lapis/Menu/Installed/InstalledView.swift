@@ -59,11 +59,17 @@ struct InstalledView: View {
                         ScrollView(.vertical, showsIndicators: false) {
                             VStack(spacing: LapisTheme.Spacing.sm) {
                                 ForEach(appState.installedVersions) { version in
-                                    InstalledVersionRow(version: version) {
-                                        withAnimation(LapisTheme.Animation.smooth) {
-                                            selectedInstalledVersion = version
+                                    InstalledVersionRow(
+                                        version: version,
+                                        action: {
+                                            withAnimation(LapisTheme.Animation.smooth) {
+                                                selectedInstalledVersion = version
+                                            }
+                                        },
+                                        onDelete: {
+                                            deleteVersion(version)
                                         }
-                                    }
+                                    )
                                 }
                             }
                             .padding(.horizontal, LapisTheme.Spacing.xxl)
@@ -77,12 +83,27 @@ struct InstalledView: View {
             appState.loadInstalledVersions()
         }
     }
+    
+    private func deleteVersion(_ version: InstalledVersion) {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let versionDir = docs.appendingPathComponent("Lapis/mods/\(version.folderName)")
+        let binDir = docs.appendingPathComponent("Lapis/versions/\(version.folderName)")
+        
+        try? fm.removeItem(at: versionDir)
+        try? fm.removeItem(at: binDir)
+        
+        withAnimation {
+            appState.loadInstalledVersions()
+        }
+    }
 }
 
 // MARK: - Installed Version Row
 struct InstalledVersionRow: View {
     let version: InstalledVersion
     let action: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         Button(action: action) {
@@ -92,8 +113,11 @@ struct InstalledVersionRow: View {
                         .fill(LapisTheme.Colors.accent.opacity(0.1))
                         .frame(width: 48, height: 48)
                     
-                    Image(systemName: version.loader.iconName)
-                        .font(.system(size: 20, weight: .medium))
+                    Image(version.loader.iconName)
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 24, height: 24)
                         .foregroundColor(LapisTheme.Colors.accent)
                 }
                 
@@ -115,6 +139,14 @@ struct InstalledVersionRow: View {
                     .padding(.horizontal, LapisTheme.Spacing.sm)
                     .padding(.vertical, LapisTheme.Spacing.xs)
                     .background(Capsule().fill(LapisTheme.Colors.glassBackground))
+                
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14))
+                        .foregroundColor(LapisTheme.Colors.danger)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
                 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))

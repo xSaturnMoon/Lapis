@@ -8,7 +8,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // MARK: - Logo
             VStack(spacing: LapisTheme.Spacing.xs) {
-                Image("lapis")
+                Image("logo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 36, height: 36)

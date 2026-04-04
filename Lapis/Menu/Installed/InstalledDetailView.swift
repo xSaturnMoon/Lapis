@@ -37,32 +37,34 @@ struct InstalledDetailView: View {
                 Spacer()
                 
                 // Tab switcher
-                HStack(spacing: 0) {
-                    ForEach(InstalledDetailTab.allCases, id: \.rawValue) { tab in
-                        Button {
-                            withAnimation(LapisTheme.Animation.fast) {
-                                selectedTab = tab
-                            }
-                        } label: {
-                            Text(tab.rawValue)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(selectedTab == tab ? LapisTheme.Colors.accent : LapisTheme.Colors.textMuted)
-                                .padding(.horizontal, LapisTheme.Spacing.lg)
-                                .padding(.vertical, LapisTheme.Spacing.sm)
-                                .background(
-                                    Group {
-                                        if selectedTab == tab {
-                                            RoundedRectangle(cornerRadius: LapisTheme.Radius.small)
-                                                .fill(LapisTheme.Colors.accent.opacity(0.1))
+                if version.loader != .vanilla {
+                    HStack(spacing: 0) {
+                        ForEach(InstalledDetailTab.allCases, id: \.rawValue) { tab in
+                            Button {
+                                withAnimation(LapisTheme.Animation.fast) {
+                                    selectedTab = tab
+                                }
+                            } label: {
+                                Text(tab.rawValue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(selectedTab == tab ? LapisTheme.Colors.accent : LapisTheme.Colors.textMuted)
+                                    .padding(.horizontal, LapisTheme.Spacing.lg)
+                                    .padding(.vertical, LapisTheme.Spacing.sm)
+                                    .background(
+                                        Group {
+                                            if selectedTab == tab {
+                                                RoundedRectangle(cornerRadius: LapisTheme.Radius.small)
+                                                    .fill(LapisTheme.Colors.accent.opacity(0.1))
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(3)
+                    .glassBackground(cornerRadius: LapisTheme.Radius.medium)
                 }
-                .padding(3)
-                .glassBackground(cornerRadius: LapisTheme.Radius.medium)
             }
             .padding(.horizontal, LapisTheme.Spacing.xxl)
             .padding(.top, LapisTheme.Spacing.xl)
@@ -72,11 +74,28 @@ struct InstalledDetailView: View {
                 .fill(LapisTheme.Colors.divider)
                 .frame(height: 1)
             
-            switch selectedTab {
-            case .mods:
-                ModsListView(version: version)
-            case .modrinth:
-                ModrinthBrowserView(version: version)
+            if version.loader == .vanilla {
+                Spacer()
+                VStack(spacing: LapisTheme.Spacing.md) {
+                    Image(systemName: "xmark.bin")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
+                    Text("Vanilla Minecraft does not support mods")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(LapisTheme.Colors.textSecondary)
+                    Text("Install a mod loader like Fabric or Forge to use mods.")
+                        .font(.system(size: 12))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+                Spacer()
+            } else {
+                switch selectedTab {
+                case .mods:
+                    ModsListView(version: version)
+                case .modrinth:
+                    ModrinthBrowserView(version: version)
+                }
             }
         }
     }

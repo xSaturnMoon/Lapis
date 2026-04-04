@@ -28,4 +28,7 @@
 /// This MUST be called before any dlopen() on unsigned dylibs.
 void init_bypassDyldLibValidation(void);
 
+/// Checks if JIT memory creation is enabled via posix_spawn/entitlement.
+bool LapisEngine_isJITEnabled(void);
+
 #endif

@@ -3,13 +3,13 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     
-    // Settings state
-    @State private var allocatedRAM: Double = 2048
-    @State private var enableJIT: Bool = true
-    @State private var renderScale: Double = 100
-    @State private var fullscreen: Bool = true
-    @State private var customJVMArgs: String = ""
-    @State private var selectedLanguage: String = "English"
+    // Settings state (Persisted via AppStorage)
+    @AppStorage("lapis_ram_alloc") private var allocatedRAM: Double = 2048
+    @AppStorage("lapis_jit_enabled") private var enableJIT: Bool = true
+    @AppStorage("lapis_render_scale") private var renderScale: Double = 100
+    @AppStorage("lapis_fullscreen") private var fullscreen: Bool = true
+    @AppStorage("lapis_jvm_args") private var customJVMArgs: String = ""
+    @AppStorage("lapis_language") private var selectedLanguage: String = "English"
     
     let maxRAM: Double = 6144 // 6GB — sensible max for iOS
     let languages = ["English", "Italiano", "Español", "Français", "Deutsch", "日本語"]

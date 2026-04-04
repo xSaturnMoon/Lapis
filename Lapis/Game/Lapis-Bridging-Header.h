@@ -9,5 +9,6 @@
 #define Lapis_Bridging_Header_h
 
 #import "LapisLauncher.h"
+#import "dyld_bypass.h"
 
 #endif

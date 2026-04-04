@@ -96,3 +96,14 @@ void init_bypassDyldLibValidation(void) {
         NSLog(@"[Lapis:Bypass] ❌ fishhook rebind failed with code: %d", result);
     }
 }
+
+bool LapisEngine_isJITEnabled(void) {
+    // Attempt to allocate executable memory (JIT)
+    void *ptr = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    if (ptr == MAP_FAILED) {
+        return false;
+    }
+    // Cleanup
+    munmap(ptr, PAGE_SIZE);
+    return true;
+}

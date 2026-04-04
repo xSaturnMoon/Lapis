@@ -34,13 +34,18 @@ struct VersionsView: View {
                                         appState.selectedLoader = loader
                                     }
                                 } label: {
-                                    Label(loader.rawValue, systemImage: loader.iconName)
+                                    HStack {
+                                        Image(loader.iconName).resizable().aspectRatio(contentMode: .fit).frame(width: 14, height: 14)
+                                        Text(loader.rawValue)
+                                    }
                                 }
                             }
                         } label: {
                             HStack(spacing: LapisTheme.Spacing.sm) {
-                                Image(systemName: appState.selectedLoader.iconName)
-                                    .font(.system(size: 12, weight: .semibold))
+                                Image(appState.selectedLoader.iconName)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 12, height: 12)
                                 Text(appState.selectedLoader.rawValue)
                                     .font(.system(size: 13, weight: .semibold))
                                 Image(systemName: "chevron.down")
@@ -158,8 +163,11 @@ struct MajorVersionCard: View {
                 
                 // Loader icon watermark
                 VStack {
-                    Image(systemName: loader.iconName)
-                        .font(.system(size: 28, weight: .light))
+                    Image(loader.iconName)
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 40, height: 40)
                         .foregroundColor(LapisTheme.Colors.textMuted.opacity(0.2))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -217,9 +225,10 @@ struct VersionSelectionPanel: View {
                             .frame(height: 100)
                         
                         VStack(spacing: LapisTheme.Spacing.sm) {
-                            Image(systemName: loader.iconName)
-                                .font(.system(size: 28, weight: .light))
-                                .foregroundColor(LapisTheme.Colors.accent.opacity(0.5))
+                            Image(loader.iconName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 28, height: 28)
                             Text("\(loader.rawValue) \(major)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(LapisTheme.Colors.textPrimary)

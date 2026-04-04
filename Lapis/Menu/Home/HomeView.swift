@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
+    @AppStorage("lapis_last_played_v2") private var lastPlayedId: String = ""
     @StateObject private var downloader = GameDownloader()
     @State private var pulseAnimation = false
     @State private var showInputMode = false
@@ -156,37 +157,58 @@ struct HomeView: View {
     
     // MARK: - Version Card
     private func versionCard(version: GameVersion) -> some View {
+        Menu {
+            ForEach(appState.installedVersions) { iv in
+                Button {
+                    appState.selectedVersion = GameVersion(id: iv.versionNumber, type: "release", url: "", releaseTime: "")
+                    appState.selectedLoader = iv.loader
+                    lastPlayedId = iv.folderName
+                } label: {
+                    Text(iv.displayName)
+                }
+            }
+        } label: {
         HStack(spacing: LapisTheme.Spacing.lg) {
             ZStack {
                 RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                     .fill(LapisTheme.Colors.accent.opacity(0.1))
                     .frame(width: 56, height: 56)
-                Image(systemName: appState.selectedLoader.iconName)
-                    .font(.system(size: 22, weight: .medium))
+                Image(appState.selectedLoader.iconName)
+                    .resizable()
+                    .renderingMode(.template)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 24, height: 24)
                     .foregroundColor(LapisTheme.Colors.accent)
             }
             VStack(alignment: .leading, spacing: LapisTheme.Spacing.xs) {
-                Text("\(appState.selectedLoader.rawValue) \(version.id)")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(LapisTheme.Colors.textPrimary)
-                Text(version.type.capitalized)
-                    .font(.system(size: 13))
+                HStack(spacing: 4) {
+                    Text("\(appState.selectedLoader.rawValue) \(version.id)")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(LapisTheme.Colors.textPrimary)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(LapisTheme.Colors.textMuted)
+                }
+                Text("Installed Version (Tap to change)")
+                    .font(.system(size: 11))
                     .foregroundColor(LapisTheme.Colors.textSecondary)
             }
             Spacer()
             
             HStack(spacing: 4) {
-                Image(systemName: "bolt.circle.fill")
+                let isJIT = LapisEngine_isJITEnabled()
+                Image(systemName: isJIT ? "bolt.circle.fill" : "bolt.slash.circle.fill")
                     .font(.system(size: 9))
-                    .foregroundColor(LapisTheme.Colors.warning)
-                Text("Enable JIT")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(LapisTheme.Colors.textMuted)
+                    .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
+                Text(isJIT ? "JIT Enabled" : "JIT Inactive")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
             }
         }
         .padding(LapisTheme.Spacing.xl)
         .frame(maxWidth: 420)
         .glassBackground()
+        }
     }
     
     private var noVersionCard: some View {
@@ -246,6 +268,11 @@ struct HomeView: View {
         .disabled(appState.selectedVersion == nil || !appState.isLoggedIn || isLaunching)
         .opacity(appState.selectedVersion == nil || !appState.isLoggedIn ? 0.4 : 1.0)
         .onAppear {
+            appState.loadInstalledVersions()
+            if let last = appState.installedVersions.first(where: { $0.folderName == lastPlayedId }) {
+                appState.selectedVersion = GameVersion(id: last.versionNumber, type: "release", url: "", releaseTime: "")
+                appState.selectedLoader = last.loader
+            }
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 pulseAnimation = true
             }

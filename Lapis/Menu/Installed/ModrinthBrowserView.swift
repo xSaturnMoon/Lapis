@@ -94,8 +94,8 @@ struct ModrinthBrowserView: View {
                                     mod: mod,
                                     version: version,
                                     isDownloading: downloadingMods.contains(mod.id),
-                                    onInstall: {
-                                        installMod(mod)
+                                    onInstall: { modVer in
+                                        installMod(mod, modVersion: modVer)
                                     }
                                 )
                             }
@@ -115,8 +115,11 @@ struct ModrinthBrowserView: View {
                         .tracking(1)
                     
                     HStack(spacing: LapisTheme.Spacing.sm) {
-                        Image(systemName: version.loader.iconName)
-                            .font(.system(size: 12))
+                        Image(version.loader.iconName)
+                            .resizable()
+                            .renderingMode(.template)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 12, height: 12)
                             .foregroundColor(LapisTheme.Colors.accent)
                         Text(version.displayName)
                             .font(.system(size: 12, weight: .semibold))
@@ -175,17 +178,11 @@ struct ModrinthBrowserView: View {
         }
     }
     
-    private func installMod(_ mod: ModrinthMod) {
+    private func installMod(_ mod: ModrinthMod, modVersion: ModrinthVersion) {
         downloadingMods.insert(mod.id)
         
         Task {
-            let versions = await modrinthService.getModVersions(
-                projectId: mod.project_id,
-                gameVersion: version.versionNumber,
-                loader: version.loader
-            )
-            
-            if let modVersion = versions.first, let file = modVersion.files.first {
+            if let file = modVersion.files.first {
                 let success = await modrinthService.downloadMod(
                     fileURL: file.url,
                     fileName: file.filename,
@@ -195,9 +192,6 @@ struct ModrinthBrowserView: View {
                 
                 await MainActor.run {
                     downloadingMods.remove(mod.id)
-                    if success {
-                        // Mod downloaded successfully to disk
-                    }
                 }
             } else {
                 await MainActor.run {
@@ -213,7 +207,11 @@ struct ModrinthResultRow: View {
     let mod: ModrinthMod
     let version: InstalledVersion
     let isDownloading: Bool
-    let onInstall: () -> Void
+    let onInstall: (ModrinthVersion) -> Void
+    
+    @StateObject private var service = ModrinthService()
+    @State private var fetchedVersions: [ModrinthVersion]? = nil
+    @State private var isFetchingVersions = false
     
     var body: some View {
         HStack(spacing: LapisTheme.Spacing.lg) {
@@ -281,8 +279,36 @@ struct ModrinthResultRow: View {
                 ProgressView()
                     .tint(LapisTheme.Colors.accent)
                     .frame(width: 70)
+            } else if isFetchingVersions {
+                ProgressView()
+                    .tint(LapisTheme.Colors.accent)
+                    .frame(width: 70)
+            } else if let versions = fetchedVersions {
+                Menu {
+                    ForEach(versions, id: \.id) { modVer in
+                        Button(action: {
+                            onInstall(modVer)
+                            fetchedVersions = nil
+                        }) {
+                            Text(modVer.version_number ?? "Unknown Version")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Select")
+                        Image(systemName: "chevron.down")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(LapisTheme.Colors.accent)
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+                }
             } else {
-                Button(action: onInstall) {
+                Button {
+                    fetchVersions()
+                } label: {
                     Text("Install")
                         .font(.system(size: 11, weight: .semibold))
                 }
@@ -291,6 +317,24 @@ struct ModrinthResultRow: View {
         }
         .padding(LapisTheme.Spacing.lg)
         .glassBackground()
+    }
+    
+    private func fetchVersions() {
+        isFetchingVersions = true
+        Task {
+            let vers = await service.getModVersions(
+                projectId: mod.project_id,
+                gameVersion: version.versionNumber,
+                loader: version.loader
+            )
+            await MainActor.run {
+                if vers.isEmpty {
+                    // Fallback to error or empty
+                }
+                self.fetchedVersions = vers
+                self.isFetchingVersions = false
+            }
+        }
     }
 }
 
