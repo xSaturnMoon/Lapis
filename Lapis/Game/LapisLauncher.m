@@ -15,13 +15,39 @@
 #import <objc/runtime.h>
 
 // ============================================================
-// MARK: - UIApplicationMain Hook (fishhook)
-// Prevents the JVM from calling UIApplicationMain() again
-// while our app's UIApplication is already running.
-// On iOS 26, the ObjC swizzle on -[UIApplication init] is not
-// enough — the JVM calls the C function UIApplicationMain()
-// directly, which iOS 26 rejects with NSInternalInconsistencyException.
+// MARK: - AppKit/UIKit Dual Guard
+// Blinda in maniera assoluta sia i bypass C che quelli ObjC.
+// Minecraft nativo Mac (libglfw) proverà a fregarci in due modi.
 // ============================================================
+
+// Livello 1: Objective-C Swizzling (Blocca [UIApplication init])
+@interface UIApplication (LapisGuardObjC)
+- (id)lapis_init;
+@end
+
+@implementation UIApplication (LapisGuardObjC)
+- (id)lapis_init {
+    @try {
+        if ([UIApplication sharedApplication] != nil) {
+            NSLog(@"[Lapis:Guard] Blocked duplicate ObjC [[UIApplication alloc] init] from libglfw!");
+            return [UIApplication sharedApplication];
+        }
+    } @catch (...) {}
+    return [self lapis_init];
+}
+@end
+
+static void installObjCGuard(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSLog(@"[Lapis:Guard] Installing swizzle on -[UIApplication init]");
+        Method orig = class_getInstanceMethod([UIApplication class], @selector(init));
+        Method swizzle = class_getInstanceMethod([UIApplication class], @selector(lapis_init));
+        method_exchangeImplementations(orig, swizzle);
+    });
+}
+
+// Livello 2: C Function Hook via fishhook (Blocca UIApplicationMain e NSApplicationLoad)
 
 typedef int (*UIApplicationMain_t)(int argc, char * _Nullable * _Nonnull argv,
     NSString * _Nullable principalClassName,
@@ -265,8 +291,10 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         
         NSLog(@"[Lapis:Engine] JRE loaded successfully!");
         
-        // CRITICAL FIX: We MUST hook UIApplicationMain AFTER libjli is loaded via dlopen, 
-        // otherwise fishhook will NOT patch the dynamically loaded JRE bindings!
+        // Installiamo lo swizzle in Objective-C per i messaggi nativi
+        installObjCGuard();
+        
+        // CRITICAL FIX: We MUST hook UIApplicationMain AFTER libjli is loaded via dlopen
         hookUIApplicationMain();
         
         // 5. Find JLI_Launch symbol
