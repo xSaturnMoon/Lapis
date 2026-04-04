@@ -13,6 +13,12 @@
 
 extern char **environ;
 
+// JNI types needed for JLI_Launch
+typedef signed char jboolean;
+typedef int jint;
+#define JNI_TRUE 1
+#define JNI_FALSE 0
+
 // JLI_Launch function pointer type
 typedef int (JLI_Launch_func)(
     int argc, const char **argv,
@@ -23,14 +29,6 @@ typedef int (JLI_Launch_func)(
     jboolean javaargs, jboolean cpwildcard,
     jboolean javaw, jint ergo
 );
-
-// jboolean/jint types if jni.h not available
-#ifndef _JNI_H
-typedef signed char jboolean;
-typedef int jint;
-#define JNI_TRUE 1
-#define JNI_FALSE 0
-#endif
 
 static BOOL _bypassReady = NO;
 static NSString *_lastError = nil;
