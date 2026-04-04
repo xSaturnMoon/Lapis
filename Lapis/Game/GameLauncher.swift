@@ -31,9 +31,7 @@ class GameLauncher {
             return docsJRE.path
         }
         
-        // 2. Otherwise, use the bundled JRE directly! 
-        // DO NOT copy it to Documents. Running it from the bundle ensures it passes 
-        // dyld Library Validation automatically on TrollStore/Sideloading!
+        // 2. Otherwise, use the bundled JRE directly!
         let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre")
         if fm.fileExists(atPath: bundleJRE.path) {
             NSLog("[Lapis:GameLauncher] Using bundled JRE directly: \(bundleJRE.path)")
@@ -84,23 +82,6 @@ class GameLauncher {
             """
         }
         
-        // --- CACIOCAVALLO BUNDLED ---
-        // Caciocavallo è l'unico modo per non far crashare UIApplicationMain.
-        let cacioDir = Bundle.main.bundleURL.appendingPathComponent("caciocavallo")
-        var cacioFound = false
-        if fm.fileExists(atPath: cacioDir.path) {
-            cacioFound = true
-        }
-        
-        if !cacioFound {
-            return """
-            CRASH PREVENTIVO: Caciocavallo non è stato impacchettato con l'app!
-            
-            XcodeKit/Xcodegen non ha incluso la cartella Lapis/caciocavallo nel bundle dell'app.
-            Controlla project.yml.
-            """
-        }
-        
         // 2. Validate game files
         let versionDir = lapisRoot.appendingPathComponent("versions/\(config.versionId)")
         let clientJar = versionDir.appendingPathComponent("\(config.versionId).jar")
@@ -117,7 +98,7 @@ class GameLauncher {
         try? fm.createDirectory(at: gameDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
-        // 4. Configure engine (already initialized at app startup)
+        // 4. Configure engine
         LapisEngine_setJavaHome(jrePath)
         LapisEngine_setGameHome(lapisRoot.path)
         
@@ -130,13 +111,6 @@ class GameLauncher {
             while let file = enumerator.nextObject() as? URL {
                 if file.pathExtension == "jar" { cpPaths.append(file.path) }
             }
-        }
-        
-        // Add caciocavallo to classpath
-        if let enumerator = fm.enumerator(at: cacioDir, includingPropertiesForKeys: nil) {
-             while let file = enumerator.nextObject() as? URL {
-                 if file.pathExtension == "jar" { cpPaths.append(file.path) }
-             }
         }
         
         // Add bundled libs
@@ -177,15 +151,11 @@ class GameLauncher {
             "-XX:-UseCompressedClassPointers",
             "-XX:+DisablePrimordialThreadGuardPages",
             "-Dfml.earlyprogresswindow=false",
-            "-Djava.awt.headless=false",
-            "-Dawt.toolkit=com.github.caciocavallosilano.cacio.ctc.CTCToolkit",
-            "-Djava.awt.graphicsenv=com.github.caciocavallosilano.cacio.ctc.CTCGraphicsEnvironment",
-            "-Dcacio.font.fontmanager=sun.awt.X11FontManager",
-            "-Dcacio.font.fontscaler=sun.font.FreetypeFontScaler",
-            "-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel"
+            "-Djava.awt.headless=true",
+            "-Dapple.awt.UIElement=true"
         ]
         
-        // Java 17 module system flags (needed for Caciocavallo and modern MC)
+        // Java module system flags
         args += [
             "--add-exports=java.desktop/java.awt=ALL-UNNAMED",
             "--add-exports=java.desktop/java.awt.peer=ALL-UNNAMED",
@@ -237,7 +207,7 @@ class GameLauncher {
         
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
-        // 7. Launch on background thread
+        // 7. Launch
         let result = LapisEngine_launchJVM(args)
         
         if result != 0 {
