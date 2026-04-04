@@ -2,7 +2,7 @@
 
 
 #include <dlfcn.h>
-#include "environ.h"
+
 #include "utils.h"
 
 #include "bridge_tbl.h"

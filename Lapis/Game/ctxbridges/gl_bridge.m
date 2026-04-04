@@ -3,7 +3,7 @@
 
 #include <dlfcn.h>
 #include "bridge_tbl.h"
-#include "environ.h"
+
 #include "gl_bridge.h"
 #include "utils.h"
 

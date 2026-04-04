@@ -3,8 +3,7 @@
 #import <UIKit/UIKit.h>
 
 #include <stdbool.h>
-#include "environ.h"
-#include "jni.h"
+
 
 // Remove date + time from NSLog, unneeded
 #define NSLog(args...) customNSLog(__FILE__,__LINE__,__PRETTY_FUNCTION__,args);
@@ -94,7 +93,7 @@ CGFloat pxToDp(CGFloat px);
 void setButtonPointerInteraction(UIButton *button);
 void _CGDataProviderReleaseBytePointerCallback(void *info,const void *pointer);
 
-jboolean attachThread(bool isAndroid, JNIEnv** secondJNIEnvPtr);
+signed char attachThread(bool isAndroid, void** secondJNIEnvPtr);
 
 void sendData(short type, int i1, int i2, short i3, short i4);
 void sendDataFloat(short type, float i1, float i2, short i3, short i4);
@@ -105,12 +104,12 @@ void callback_SurfaceViewController_launchMinecraft(int width, int height);
 int callback_SurfaceViewController_touchHotbar(CGFloat x, CGFloat y);
 
 void CallbackBridge_nativeSetInputReady(BOOL inputReady);
-BOOL CallbackBridge_nativeSendChar(jchar codepoint /* jint codepoint */);
-BOOL CallbackBridge_nativeSendCharMods(jchar codepoint, int mods);
+BOOL CallbackBridge_nativeSendChar(unsigned short codepoint /* jint codepoint */);
+BOOL CallbackBridge_nativeSendCharMods(unsigned short codepoint, int mods);
 void CallbackBridge_nativeSendCursorPos(char event, CGFloat x, CGFloat y);
 void CallbackBridge_nativeSendKey(int key, int scancode, int action, int mods);
 void CallbackBridge_nativeSendMouseButton(int button, int action, int mods);
 void CallbackBridge_nativeSendScreenSize(int width, int height);
 void CallbackBridge_nativeSendScroll(CGFloat xoffset, CGFloat yoffset);
-void CallbackBridge_sendKeycode(int keycode, jchar keychar, int scancode, int modifiers, BOOL isDown);
+void CallbackBridge_sendKeycode(int keycode, unsigned short keychar, int scancode, int modifiers, BOOL isDown);
 void CallbackBridge_pauseGameIfNeed();
