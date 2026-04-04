@@ -13,17 +13,33 @@
 #include <pthread.h>
 #import <objc/runtime.h>
 
-// Intercetta e blocca tentativi di creare una seconda UIApplication
-static void lapisUncaughtExceptionHandler(NSException *exception) {
-    if ([exception.reason containsString:@"UIApplication instance"]) {
-        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
-        return;
-    }
-    NSLog(@"[Lapis:Engine] Uncaught exception: %@", exception);
+// Intercetta e blocca tentativi di creare una seconda UIApplication tramite Swizzling ObjC
+@interface UIApplication (LapisGuard)
+- (id)lapis_init;
+@end
+
+@implementation UIApplication (LapisGuard)
+- (id)lapis_init {
+    @try {
+        if ([UIApplication sharedApplication] != nil) {
+            NSLog(@"[Lapis:Guard] Blocked duplicate UIApplication creation");
+            return [UIApplication sharedApplication];
+        }
+    } @catch (NSException *e) {}
+    
+    // Altrimenti procedi con l'inizializzazione originale
+    return [self lapis_init];
 }
+@end
 
 static void installUIApplicationGuard(void) {
-    NSSetUncaughtExceptionHandler(&lapisUncaughtExceptionHandler);
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSLog(@"[Lapis:Guard] Installing swizzle on -[UIApplication init]");
+        Method origMethod = class_getInstanceMethod([UIApplication class], @selector(init));
+        Method swizzledMethod = class_getInstanceMethod([UIApplication class], @selector(lapis_init));
+        method_exchangeImplementations(origMethod, swizzledMethod);
+    });
 }
 
 extern char **environ;
