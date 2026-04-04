@@ -155,6 +155,19 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         NSLog(@"[Lapis:Engine] Starting JVM launch sequence");
         NSLog(@"[Lapis:Engine] ========================================");
         
+        // Redirect stdout and stderr to latestlog.txt
+        if (_gameHome) {
+            NSString *logPath = [_gameHome stringByAppendingPathComponent:@"latestlog.txt"];
+            freopen([logPath UTF8String], "w", stdout);
+            freopen([logPath UTF8String], "w", stderr);
+            // Disable buffering to capture standard output instantly
+            setvbuf(stdout, NULL, _IONBF, 0);
+            setvbuf(stderr, NULL, _IONBF, 0);
+            NSLog(@"[Lapis:Engine] Logs redirected to: %@", logPath);
+            fprintf(stdout, "======== Lapis JVM Boot Log ========\n");
+            fprintf(stdout, "Game Home: %s\n", _gameHome.UTF8String);
+        }
+        
         // 1. Check prerequisites
         if (!_bypassReady) {
             _lastError = @"Dyld bypass not initialized. Call LapisEngine_init() first.";

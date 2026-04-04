@@ -33,6 +33,9 @@ struct ContentView: View {
                     case .installed:
                         InstalledView()
                             .transition(.opacity)
+                    case .reports:
+                        ReportsView()
+                            .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

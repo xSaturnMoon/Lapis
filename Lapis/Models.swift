@@ -68,6 +68,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
     case settings
     case versions
     case installed
+    case reports
     
     var id: String { rawValue }
     
@@ -77,6 +78,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
         case .settings: return "gearshape.fill"
         case .versions: return "square.stack.3d.up.fill"
         case .installed: return "puzzlepiece.fill"
+        case .reports: return "scroll.fill"
         }
     }
 }
