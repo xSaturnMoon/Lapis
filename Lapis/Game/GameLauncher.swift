@@ -100,8 +100,7 @@ class GameLauncher {
         try? fm.createDirectory(at: gameDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
-        // 4. Configure engine
-        initEngine()
+        // 4. Configure engine (already initialized at app startup)
         LapisEngine_setJavaHome(jrePath)
         LapisEngine_setGameHome(lapisRoot.path)
         

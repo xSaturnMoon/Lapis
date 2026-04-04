@@ -4,6 +4,12 @@ import SwiftUI
 struct LapisApp: App {
     @StateObject private var appState = AppState()
     
+    init() {
+        // CRITICAL: Initialize dyld bypass on the main thread at app launch
+        // before dyld resolves other symbols
+        GameLauncher.shared.initEngine()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()

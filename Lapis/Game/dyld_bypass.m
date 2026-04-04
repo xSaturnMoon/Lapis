@@ -71,10 +71,14 @@ void init_bypassDyldLibValidation(void) {
 
     NSLog(@"[Lapis:Bypass] Initializing dyld bypass via fishhook...");
 
-    rebind_symbols((struct rebinding[]){
-        {"fcntl", my_fcntl, (void **)&orig_fcntl},
-        {"mmap",  my_mmap,  (void **)&orig_mmap},
+    int result = rebind_symbols((struct rebinding[]){
+        {"fcntl",  my_fcntl,  (void **)&orig_fcntl},
+        {"mmap",   my_mmap,   (void **)&orig_mmap},
     }, 2);
 
-    NSLog(@"[Lapis:Bypass] dyld bypass initialized successfully");
+    if (result == 0) {
+        NSLog(@"[Lapis:Bypass] ✅ dyld bypass initialized successfully");
+    } else {
+        NSLog(@"[Lapis:Bypass] ❌ fishhook rebind failed with code: %d", result);
+    }
 }
