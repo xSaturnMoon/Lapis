@@ -37,7 +37,9 @@ static int lapis_UIApplicationMain(int argc, char * _Nullable * _Nonnull argv,
     UIApplication *existing = nil;
     @try { existing = [UIApplication sharedApplication]; } @catch (...) {}
     if (existing != nil) {
-        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplicationMain() call");
+        NSLog(@"[Lapis:Guard] Blocked duplicate UIApplicationMain() call. Thread suspended.");
+        // Non possiamo ritornare: Java si aspetta che UIApplicationMain blocchi in eterno sulla runloop!
+        while (1) { sleep(1000); }
         return 0;
     }
     return original_UIApplicationMain(argc, argv, principalClassName, delegateClassName);
@@ -148,10 +150,6 @@ void LapisEngine_init(void) {
     // Initialize the dyld bypass — MUST be done before any dlopen
     init_bypassDyldLibValidation();
     _bypassReady = YES;
-    
-    // Install UIApplicationMain hook immediately at engine init,
-    // long before the JVM starts, so it's always ready
-    hookUIApplicationMain();
     
     NSLog(@"[Lapis:Engine] Engine initialized. Dyld bypass: %@",
           _bypassReady ? @"ACTIVE" : @"FAILED");
@@ -266,6 +264,10 @@ int LapisEngine_launchJVM(NSArray<NSString *> *args) {
         }
         
         NSLog(@"[Lapis:Engine] JRE loaded successfully!");
+        
+        // CRITICAL FIX: We MUST hook UIApplicationMain AFTER libjli is loaded via dlopen, 
+        // otherwise fishhook will NOT patch the dynamically loaded JRE bindings!
+        hookUIApplicationMain();
         
         // 5. Find JLI_Launch symbol
         JLI_Launch_func *pJLI_Launch = (JLI_Launch_func *)dlsym(libjli, "JLI_Launch");
