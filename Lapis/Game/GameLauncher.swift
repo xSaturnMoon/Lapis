@@ -139,6 +139,8 @@ class GameLauncher {
             "-Dos.name=iOS",
             "-XX:+UseSerialGC",
             "-XX:MaxGCPauseMillis=200",
+            "-XX:-UseCompressedOops",             // Crucial for Sideloadly! Avoids huge virtual memory allocations
+            "-XX:-UseCompressedClassPointers",    // Crucial for Sideloadly!
             "-XX:+UnlockExperimentalVMOptions",
             "-XX:+DisablePrimordialThreadGuardPages",  // Workaround stack guard crash
             "-Dfml.earlyprogresswindow=false",         // Disable Forge loading window
