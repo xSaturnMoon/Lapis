@@ -84,25 +84,20 @@ class GameLauncher {
             """
         }
         
-        // --- CACIOCAVALLO VALIDATION ---
+        // --- CACIOCAVALLO BUNDLED ---
         // Caciocavallo è l'unico modo per non far crashare UIApplicationMain.
-        let cacioDir = lapisRoot.appendingPathComponent("caciocavallo")
-        let cacioFile1 = cacioDir.appendingPathComponent("caciocavallo-1.0.0.jar") // Adjust assuming it's in caciocavallo folder
+        let cacioDir = Bundle.main.bundleURL.appendingPathComponent("caciocavallo")
         var cacioFound = false
-        if let enumerator = fm.enumerator(at: lapisRoot, includingPropertiesForKeys: nil) {
-            while let file = enumerator.nextObject() as? URL {
-                if file.pathExtension == "jar" && file.lastPathComponent.contains("cacio") {
-                    cacioFound = true; break;
-                }
-            }
+        if fm.fileExists(atPath: cacioDir.path) {
+            cacioFound = true
         }
         
         if !cacioFound {
             return """
-            CRASH PREVENTIVO: Caciocavallo mancante!
+            CRASH PREVENTIVO: Caciocavallo non è stato impacchettato con l'app!
             
-            Senza Caciocavallo, Java chiama UIApplicationMain e l'app crasha istantaneamente (There can only be one UIApplication instance).
-            Devi OBBLIGATORIAMENTE scaricare caciocavallo.jar e metterlo nella cartella Lapis/caciocavallo/!
+            XcodeKit/Xcodegen non ha incluso la cartella Lapis/caciocavallo nel bundle dell'app.
+            Controlla project.yml.
             """
         }
         
