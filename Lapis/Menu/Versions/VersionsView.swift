@@ -321,6 +321,7 @@ struct VersionSelectionPanel: View {
                         .foregroundColor(LapisTheme.Colors.textMuted)
                     Spacer()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxHeight: .infinity)
