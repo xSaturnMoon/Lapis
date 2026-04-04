@@ -41,6 +41,24 @@ jobs:
           rm -f jre17.tar.xz
           echo "=== JRE ready ==="
 
+      - name: Download PojavLauncher Frameworks
+        run: |
+          echo "=== Downloading pre-built frameworks from PojavLauncher ==="
+          
+          # Clone only the Frameworks directory from PojavLauncher
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/PojavLauncherTeam/PojavLauncher_iOS.git pojav-src
+          cd pojav-src
+          git sparse-checkout set Frameworks libs libs_caciocavallo17
+          cd ..
+          
+          echo "=== Frameworks ==="
+          ls -la pojav-src/Frameworks/ 2>/dev/null || echo "No Frameworks dir"
+          ls -la pojav-src/libs/ 2>/dev/null || echo "No libs dir"
+          ls -la pojav-src/libs_caciocavallo17/ 2>/dev/null || echo "No caciocavallo dir"
+          
+          echo "=== Done ==="
+
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
 
@@ -68,23 +86,46 @@ jobs:
           
           echo "Found app at: $APP_PATH"
           
-          # Bundle JRE into the app's Documents template
-          # The JRE will be copied to Documents/Lapis/jre on first launch
+          # Bundle JRE into the app
           if [ -d "jre-bundle" ]; then
             echo "Bundling JRE into app..."
             cp -r jre-bundle "$APP_PATH/jre"
-            echo "JRE bundled! Contents:"
-            ls -la "$APP_PATH/jre/" | head -10
+            echo "JRE bundled!"
           fi
           
-          # Code sign all executables and dylibs in the JRE to prevent iOS from killing the app
-          # when dlopen() tries to load an unsigned library. This was the root cause of the crash.
-          echo "Signing JRE binaries..."
-          find "$APP_PATH/jre" -type f \( -name "*.dylib" -o -name "*.so" -o -path "*/bin/*" \) -exec ldid -S {} \;
+          # Bundle PojavLauncher frameworks (GL4ES, MetalANGLE, LWJGL, etc.)
+          if [ -d "pojav-src/Frameworks" ]; then
+            echo "Bundling frameworks..."
+            mkdir -p "$APP_PATH/Frameworks"
+            cp -r pojav-src/Frameworks/* "$APP_PATH/Frameworks/" 2>/dev/null || true
+            echo "Frameworks bundled!"
+            ls -la "$APP_PATH/Frameworks/" | head -20
+          fi
+          
+          # Bundle Java libraries (PojavLauncher wrapper, Caciocavallo, etc.)
+          if [ -d "pojav-src/libs" ]; then
+            echo "Bundling Java libs..."
+            mkdir -p "$APP_PATH/libs"
+            cp -r pojav-src/libs/* "$APP_PATH/libs/" 2>/dev/null || true
+            echo "Java libs bundled!"
+          fi
+          
+          if [ -d "pojav-src/libs_caciocavallo17" ]; then
+            echo "Bundling Caciocavallo..."
+            mkdir -p "$APP_PATH/libs_caciocavallo17"
+            cp -r pojav-src/libs_caciocavallo17/* "$APP_PATH/libs_caciocavallo17/" 2>/dev/null || true
+            echo "Caciocavallo bundled!"
+          fi
+          
+          # Sign ALL dylibs in the app (JRE + Frameworks)
+          echo "Signing all binaries..."
+          find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -path "*/bin/*" \) \
+            -exec ldid -S {} \; 2>/dev/null || true
           
           # Sign the main app executable with JIT entitlements
           ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
           
+          # Create IPA
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload

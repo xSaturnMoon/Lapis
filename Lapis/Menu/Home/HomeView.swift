@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var selectedInputMode: InputMode? = nil
     @State private var showLaunchError = false
     @State private var launchErrorText = ""
+    @State private var isLaunching = false
     
     var body: some View {
         ZStack {
@@ -20,7 +21,6 @@ struct HomeView: View {
                     withAnimation(LapisTheme.Animation.smooth) {
                         showInputMode = false
                     }
-                    // Delay to avoid state conflict during animation
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                         startGameFlow(mode: mode)
                     }
@@ -35,16 +35,42 @@ struct HomeView: View {
                         if complete {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                 withAnimation { showDownloadProgress = false }
-                                launchGame()
+                                if let mode = selectedInputMode {
+                                    doLaunch(mode: mode)
+                                }
                             }
                         }
                     }
+            }
+            
+            // Launching overlay
+            if isLaunching {
+                ZStack {
+                    LapisTheme.Colors.background.opacity(0.9)
+                        .ignoresSafeArea()
+                    VStack(spacing: LapisTheme.Spacing.xl) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(LapisTheme.Colors.accent)
+                        Text("Launching Minecraft...")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(LapisTheme.Colors.textPrimary)
+                        Text("This may take a moment")
+                            .font(.system(size: 13))
+                            .foregroundColor(LapisTheme.Colors.textMuted)
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .alert("Launch Error", isPresented: $showLaunchError) {
             Button("OK") {}
         } message: {
             Text(launchErrorText)
+        }
+        .onAppear {
+            // Initialize the native engine on first appear
+            GameLauncher.shared.initEngine()
         }
     }
     
@@ -80,7 +106,6 @@ struct HomeView: View {
                 Spacer()
                 
                 VStack(spacing: LapisTheme.Spacing.xxl) {
-                    // Title
                     VStack(spacing: LapisTheme.Spacing.sm) {
                         Text("LAPIS")
                             .font(.system(size: 42, weight: .black, design: .rounded))
@@ -95,14 +120,12 @@ struct HomeView: View {
                             .foregroundColor(LapisTheme.Colors.textSecondary)
                     }
                     
-                    // Selected version card
                     if let version = appState.selectedVersion {
                         versionCard(version: version)
                     } else {
                         noVersionCard
                     }
                     
-                    // PLAY button
                     playButton
                     
                     if !appState.isLoggedIn && appState.selectedVersion != nil {
@@ -115,10 +138,19 @@ struct HomeView: View {
                 Spacer()
                 
                 HStack {
+                    // Engine status
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(LapisEngine_isBypassReady() ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
+                            .frame(width: 6, height: 6)
+                        Text(LapisEngine_isBypassReady() ? "Engine Ready" : "Engine Not Loaded")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(LapisTheme.Colors.textMuted)
+                    }
+                    Spacer()
                     Text("v1.0.0")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(LapisTheme.Colors.textMuted)
-                    Spacer()
                 }
                 .padding(.horizontal, LapisTheme.Spacing.xxl)
                 .padding(.bottom, LapisTheme.Spacing.lg)
@@ -147,7 +179,6 @@ struct HomeView: View {
             }
             Spacer()
             
-            // Static JIT reminder (actual JIT enabled via StikDebug/TrollStore)
             HStack(spacing: 4) {
                 Image(systemName: "bolt.circle.fill")
                     .font(.system(size: 9))
@@ -216,7 +247,7 @@ struct HomeView: View {
             .shadow(color: LapisTheme.Colors.accent.opacity(0.3), radius: 16, y: 4)
         }
         .buttonStyle(.plain)
-        .disabled(appState.selectedVersion == nil || !appState.isLoggedIn)
+        .disabled(appState.selectedVersion == nil || !appState.isLoggedIn || isLaunching)
         .opacity(appState.selectedVersion == nil || !appState.isLoggedIn ? 0.4 : 1.0)
         .onAppear {
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
@@ -229,13 +260,9 @@ struct HomeView: View {
     private func startGameFlow(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
         
-        // Check if game files are downloaded
         if downloader.isVersionDownloaded(version.id) {
-            // Files ready — show status
-            launchErrorText = "Game files ready for \(version.id).\n\nThe game engine is being integrated. Full JVM launch coming in the next update."
-            showLaunchError = true
+            doLaunch(mode: mode)
         } else {
-            // Need to download first
             withAnimation { showDownloadProgress = true }
             Task {
                 await downloader.downloadVersion(version.id)
@@ -243,9 +270,31 @@ struct HomeView: View {
         }
     }
     
-    private func launchGame() {
+    private func doLaunch(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
-        launchErrorText = "Download complete for \(version.id)!\n\nGame engine integration in progress."
-        showLaunchError = true
+        
+        withAnimation { isLaunching = true }
+        
+        let config = GameLauncher.LaunchConfig(
+            versionId: version.id,
+            loader: appState.selectedLoader,
+            inputMode: mode,
+            playerName: appState.playerName,
+            playerUUID: appState.playerUUID,
+            accessToken: appState.accessToken
+        )
+        
+        // Launch on background thread to keep UI responsive
+        DispatchQueue.global(qos: .userInitiated).async {
+            let error = GameLauncher.shared.launch(config: config)
+            
+            DispatchQueue.main.async {
+                withAnimation { isLaunching = false }
+                if let error = error {
+                    launchErrorText = error
+                    showLaunchError = true
+                }
+            }
+        }
     }
 }

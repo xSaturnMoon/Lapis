@@ -1,212 +1,225 @@
 import Foundation
 
-// MARK: - Game Launcher
-class GameLauncher: ObservableObject {
-    @Published var isLaunching = false
-    @Published var launchStatus: String = ""
-    @Published var launchError: String? = nil
-    @Published var needsJRE = false
+/// GameLauncher — Swift bridge to the native Lapis game engine.
+/// Handles JRE setup, classpath building, and JVM launch via LapisLauncher (ObjC).
+class GameLauncher {
     
-    private let appState: AppState
+    static let shared = GameLauncher()
     
-    init(appState: AppState) {
-        self.appState = appState
+    private init() {}
+    
+    // MARK: - Engine Initialization
+    
+    /// Initialize the native engine (dyld bypass). Call once at app start.
+    func initEngine() {
+        LapisEngine_init()
+        NSLog("[Lapis:GameLauncher] Engine initialized, bypass ready: \(LapisEngine_isBypassReady())")
     }
     
-    /// Check if JRE is installed (checks bundle and Documents)
-    var isJREInstalled: Bool {
-        let fm = FileManager.default
-        let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre").path
-        if fm.fileExists(atPath: bundleJRE) { return true }
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let docsJRE = docs.appendingPathComponent("Lapis/jre").path
-        return fm.fileExists(atPath: docsJRE)
-    }
+    // MARK: - JRE Management
     
-    /// Get the JRE path that actually exists
-    private var resolvedJREPath: String? {
-        let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let docsJRE = docs.appendingPathComponent("Lapis/jre")
-        if fm.fileExists(atPath: docsJRE.path) { return docsJRE.path }
-        let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre")
-        if fm.fileExists(atPath: bundleJRE.path) { return bundleJRE.path }
-        return nil
-    }
-    
-    /// Launch Minecraft
-    func launchGame(versionId: String, loader: ModLoader, inputMode: InputMode) {
-        isLaunching = true
-        launchError = nil
-        
-        // Check JRE
-        guard let jrePath = resolvedJREPath else {
-            launchError = "Java Runtime (JRE) not found.\n\nPlace the JRE in:\nFiles → Lapis → jre/"
-            needsJRE = true
-            isLaunching = false
-            return
-        }
-        
-        launchStatus = "Preparing game..."
-        
+    /// Find and set up the JRE. Returns the path if found, nil otherwise.
+    func setupJRE() -> String? {
         let fm = FileManager.default
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let lapisRoot = docs.appendingPathComponent("Lapis")
-        let versionDir = lapisRoot.appendingPathComponent("versions/\(versionId)")
-        let libDir = lapisRoot.appendingPathComponent("libraries")
+        let docsJRE = lapisRoot.appendingPathComponent("jre")
+        
+        // Check Documents/Lapis/jre first
+        if fm.fileExists(atPath: docsJRE.path) {
+            NSLog("[Lapis:GameLauncher] JRE found in Documents: \(docsJRE.path)")
+            return docsJRE.path
+        }
+        
+        // Check app bundle
+        let bundleJRE = Bundle.main.bundleURL.appendingPathComponent("jre")
+        if fm.fileExists(atPath: bundleJRE.path) {
+            NSLog("[Lapis:GameLauncher] JRE found in bundle, copying to Documents...")
+            try? fm.createDirectory(at: lapisRoot, withIntermediateDirectories: true)
+            do {
+                try fm.copyItem(at: bundleJRE, to: docsJRE)
+                NSLog("[Lapis:GameLauncher] JRE copied successfully")
+                return docsJRE.path
+            } catch {
+                NSLog("[Lapis:GameLauncher] Failed to copy JRE: \(error)")
+            }
+        }
+        
+        NSLog("[Lapis:GameLauncher] No JRE found!")
+        return nil
+    }
+    
+    /// Check if JRE has libjli.dylib
+    func isJREValid(_ jrePath: String) -> Bool {
+        let fm = FileManager.default
+        let jli11 = (jrePath as NSString).appendingPathComponent("lib/libjli.dylib")
+        let jli8 = (jrePath as NSString).appendingPathComponent("lib/jli/libjli.dylib")
+        return fm.fileExists(atPath: jli11) || fm.fileExists(atPath: jli8)
+    }
+    
+    // MARK: - Game Launch
+    
+    struct LaunchConfig {
+        let versionId: String
+        let loader: ModLoader
+        let inputMode: InputMode
+        let playerName: String
+        let playerUUID: String
+        let accessToken: String
+    }
+    
+    /// Launch Minecraft with the given configuration.
+    /// Returns nil on success, or an error message on failure.
+    func launch(config: LaunchConfig) -> String? {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let lapisRoot = docs.appendingPathComponent("Lapis")
+        
+        // 1. Validate JRE
+        guard let jrePath = setupJRE() else {
+            return "Java Runtime (JRE) not found.\n\nPlace the JRE in: Files → Lapis → jre/"
+        }
+        
+        guard isJREValid(jrePath) else {
+            return "JRE is incomplete.\n\nlibjli.dylib not found.\nPlease re-install the JRE."
+        }
+        
+        // 2. Validate game files
+        let versionDir = lapisRoot.appendingPathComponent("versions/\(config.versionId)")
+        let clientJar = versionDir.appendingPathComponent("\(config.versionId).jar")
+        guard fm.fileExists(atPath: clientJar.path) else {
+            return "Game files not downloaded.\nPlease download \(config.versionId) first."
+        }
+        
+        // 3. Set up directories
         let gameDir = lapisRoot.appendingPathComponent("game")
-        let modsFolderName = "mods-\(versionId)-\(loader.rawValue.lowercased())"
-        let modsDir = lapisRoot.appendingPathComponent("mods/\(modsFolderName)")
+        let modsDir = lapisRoot.appendingPathComponent("mods/mods-\(config.versionId)-\(config.loader.rawValue.lowercased())")
+        let assetsDir = lapisRoot.appendingPathComponent("assets")
+        let libDir = lapisRoot.appendingPathComponent("libraries")
         
         try? fm.createDirectory(at: gameDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
-        // Check client.jar
-        let clientJar = versionDir.appendingPathComponent("\(versionId).jar")
-        if !fm.fileExists(atPath: clientJar.path) {
-            launchError = "Game files not downloaded yet.\nPlease wait for the download to complete."
-            isLaunching = false
-            return
-        }
+        // 4. Configure engine
+        LapisEngine_setJavaHome(jrePath)
+        LapisEngine_setGameHome(lapisRoot.path)
         
-        // Check libjli.dylib exists before trying dlopen
-        let jliPath = (jrePath as NSString).appendingPathComponent("lib/libjli.dylib")
-        if !fm.fileExists(atPath: jliPath) {
-            // Try alternative paths
-            let altJli = (jrePath as NSString).appendingPathComponent("lib/jli/libjli.dylib")
-            if !fm.fileExists(atPath: altJli) {
-                launchError = "JRE is incomplete.\n\nlibjli.dylib not found in:\n\(jrePath)/lib/\n\nPlease re-install the JRE."
-                isLaunching = false
-                return
-            }
-        }
+        // Save input mode
+        UserDefaults.standard.set(config.inputMode == .touch ? "touch" : "keyboard", forKey: "lapis_input_mode")
         
-        launchStatus = "Building classpath..."
-        let classpath = buildClasspath(versionDir: versionDir, libDir: libDir, versionId: versionId)
-        
-        launchStatus = "Preparing JVM arguments..."
-        let jvmArgs = buildJVMArguments(
-            versionId: versionId,
-            gameDir: gameDir.path,
-            modsDir: modsDir.path,
-            assetsDir: lapisRoot.appendingPathComponent("assets").path,
-            loader: loader,
-            classpath: classpath
-        )
-        
-        let gameArgs = buildGameArguments(
-            versionId: versionId,
-            gameDir: gameDir.path,
-            assetsDir: lapisRoot.appendingPathComponent("assets").path,
-            accessToken: appState.accessToken,
-            playerName: appState.playerName,
-            playerUUID: appState.playerUUID
-        )
-        
-        UserDefaults.standard.set(inputMode == .touch ? "touch" : "keyboard", forKey: "lapis_input_mode")
-        
-        // Set JAVA_HOME before launching
-        PojavBridge.setJavaHome(jrePath)
-        
-        launchStatus = "Starting Minecraft..."
-        
-        // Launch on background thread with crash protection
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let allArgs = jvmArgs + ["net.minecraft.client.main.Main"] + gameArgs
-            
-            // Log what we're about to do
-            NSLog("[Lapis] JAVA_HOME: %@", jrePath)
-            NSLog("[Lapis] JLI path: %@", jliPath)
-            NSLog("[Lapis] Classpath entries: %d", classpath.split(separator: ":").count)
-            NSLog("[Lapis] Total args: %d", allArgs.count)
-            for (i, arg) in allArgs.enumerated() {
-                NSLog("[Lapis]   arg[%d]: %@", i, arg)
-            }
-            
-            // Try to load the JRE library first (safe check)
-            let handle = dlopen(jliPath, RTLD_LAZY)
-            if handle == nil {
-                let err = String(cString: dlerror())
-                NSLog("[Lapis] ERROR: Cannot load JRE: %@", err)
-                DispatchQueue.main.async {
-                    self?.launchError = "Cannot load Java Runtime.\n\nError: \(err)\n\nThis usually means:\n• JIT is not enabled (use StikDebug/TrollStore)\n• The JRE is not properly signed\n• The app needs to be installed via TrollStore"
-                    self?.isLaunching = false
-                }
-                return
-            }
-            dlclose(handle)
-            
-            // Actually launch (if dlopen worked, this should too)
-            let result = PojavBridge.launchJVM(withArgs: allArgs)
-            
-            DispatchQueue.main.async {
-                if result != 0 {
-                    self?.launchError = "Minecraft exited with code \(result)\n\nPossible causes:\n• JRE incompatible\n• Missing libraries\n• JIT not enabled"
-                }
-                self?.isLaunching = false
-            }
-        }
-    }
-    
-    private func buildClasspath(versionDir: URL, libDir: URL, versionId: String) -> String {
-        var paths: [String] = []
-        let clientJar = versionDir.appendingPathComponent("\(versionId).jar")
-        if FileManager.default.fileExists(atPath: clientJar.path) {
-            paths.append(clientJar.path)
-        }
-        if let enumerator = FileManager.default.enumerator(at: libDir, includingPropertiesForKeys: nil) {
+        // 5. Build classpath
+        var cpPaths = [clientJar.path]
+        if let enumerator = fm.enumerator(at: libDir, includingPropertiesForKeys: nil) {
             while let file = enumerator.nextObject() as? URL {
-                if file.pathExtension == "jar" {
-                    paths.append(file.path)
-                }
+                if file.pathExtension == "jar" { cpPaths.append(file.path) }
             }
         }
-        return paths.joined(separator: ":")
-    }
-    
-    private func buildJVMArguments(versionId: String, gameDir: String, modsDir: String, assetsDir: String, loader: ModLoader, classpath: String) -> [String] {
-        let ramMB = UserDefaults.standard.integer(forKey: "lapis_ram") > 0
-            ? UserDefaults.standard.integer(forKey: "lapis_ram")
-            : 1024
+        // Add bundled libs
+        let bundleLibs = Bundle.main.bundleURL.appendingPathComponent("libs")
+        if fm.fileExists(atPath: bundleLibs.path),
+           let enumerator = fm.enumerator(at: bundleLibs, includingPropertiesForKeys: nil) {
+            while let file = enumerator.nextObject() as? URL {
+                if file.pathExtension == "jar" { cpPaths.append(file.path) }
+            }
+        }
+        let classpath = cpPaths.joined(separator: ":")
+        
+        // 6. Build JVM arguments
+        let ramMB = max(UserDefaults.standard.integer(forKey: "lapis_ram"), 1024)
+        let frameworksPath = Bundle.main.bundleURL.appendingPathComponent("Frameworks").path
         
         var args: [String] = [
+            "\(jrePath)/bin/java",              // argv[0] = java binary path
+            "-XstartOnFirstThread",
+            "-Xms128M",
             "-Xmx\(ramMB)M",
-            "-Xms\(ramMB / 2)M",
-            "-XX:+UseG1GC",
-            "-XX:+ParallelRefProcEnabled",
-            "-XX:MaxGCPauseMillis=200",
+            "-Djava.library.path=\(frameworksPath)",
+            "-Duser.dir=\(gameDir.path)",
+            "-Duser.home=\(lapisRoot.path)",
+            "-Duser.timezone=\(TimeZone.current.identifier)",
+            "-Dorg.lwjgl.glfw.checkThread0=false",
+            "-Dorg.lwjgl.system.allocator=system",
+            "-Dlog4j2.formatMsgNoLookups=true",
             "-Dfile.encoding=UTF-8",
             "-Djava.io.tmpdir=\(NSTemporaryDirectory())",
             "-Dos.name=iOS",
-            "-cp", classpath,
+            "-XX:+UseG1GC",
+            "-XX:MaxGCPauseMillis=200",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:+DisablePrimordialThreadGuardPages",  // Workaround stack guard crash
+            "-Dfml.earlyprogresswindow=false",         // Disable Forge loading window
         ]
         
-        switch loader {
+        // Java 17 module system flags (needed for Caciocavallo and modern MC)
+        args += [
+            "--add-exports=java.desktop/java.awt=ALL-UNNAMED",
+            "--add-exports=java.desktop/java.awt.peer=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.java2d=ALL-UNNAMED",
+            "--add-exports=java.desktop/java.awt.dnd.peer=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.awt.event=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.awt.datatransfer=ALL-UNNAMED",
+            "--add-exports=java.desktop/sun.font=ALL-UNNAMED",
+            "--add-exports=java.base/sun.security.action=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED",
+            "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.font=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.java2d=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+            "--add-opens=java.base/java.net=ALL-UNNAMED",
+        ]
+        
+        // Headless AWT (Caciocavallo)
+        args += [
+            "-Djava.awt.headless=false",
+            "-Dawt.toolkit=com.github.caciocavallosilano.cacio.ctc.CTCToolkit",
+            "-Djava.awt.graphicsenv=com.github.caciocavallosilano.cacio.ctc.CTCGraphicsEnvironment",
+            "-Dcacio.font.fontmanager=sun.awt.X11FontManager",
+            "-Dcacio.font.fontscaler=sun.font.FreetypeFontScaler",
+            "-Dswing.defaultlaf=javax.swing.plaf.metal.MetalLookAndFeel",
+        ]
+        
+        // Loader-specific flags
+        switch config.loader {
         case .fabric:
-            args.append("-Dfabric.modsDir=\(modsDir)")
-            args.append("-Dfabric.gameDir=\(gameDir)")
+            args.append("-Dfabric.modsDir=\(modsDir.path)")
+            args.append("-Dfabric.gameDir=\(gameDir.path)")
         case .forge, .neoforge:
-            args.append("-Dfml.modsDir=\(modsDir)")
+            args.append("-Dfml.modsDir=\(modsDir.path)")
         case .quilt:
-            args.append("-Dloader.modsDir=\(modsDir)")
+            args.append("-Dloader.modsDir=\(modsDir.path)")
         case .vanilla:
             break
         }
         
-        return args
-    }
-    
-    private func buildGameArguments(versionId: String, gameDir: String, assetsDir: String, accessToken: String, playerName: String, playerUUID: String) -> [String] {
-        return [
-            "--username", playerName,
-            "--version", versionId,
-            "--gameDir", gameDir,
-            "--assetsDir", assetsDir,
-            "--assetIndex", versionId,
-            "--uuid", playerUUID,
-            "--accessToken", accessToken,
+        // Classpath and main class
+        args += ["-cp", classpath]
+        args.append("net.minecraft.client.main.Main")
+        
+        // Game arguments
+        args += [
+            "--username", config.playerName,
+            "--version", config.versionId,
+            "--gameDir", gameDir.path,
+            "--assetsDir", assetsDir.path,
+            "--assetIndex", config.versionId,
+            "--uuid", config.playerUUID,
+            "--accessToken", config.accessToken,
             "--userType", "msa",
             "--versionType", "Lapis"
         ]
+        
+        NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
+        
+        // 7. Launch on background thread
+        let result = LapisEngine_launchJVM(args)
+        
+        if result != 0 {
+            let engineError = LapisEngine_getLastError() ?? "Unknown error"
+            return "Launch failed (code \(result)):\n\(engineError)"
+        }
+        
+        return nil
     }
 }

@@ -30,8 +30,18 @@ targets:
         SWIFT_VERSION: "5.9"
         SWIFT_OBJC_BRIDGING_HEADER: Lapis/Game/Lapis-Bridging-Header.h
         CLANG_ENABLE_MODULES: "YES"
+        # Allow inline assembly for dyld bypass (ARM64 syscalls)
+        ENABLE_BITCODE: "NO"
         OTHER_LDFLAGS:
           - "-ldl"
           - "-lpthread"
+          - "-framework"
+          - "UIKit"
+          - "-framework"
+          - "Foundation"
+        # Allow calling private kernel symbols (__mmap, __fcntl)
+        OTHER_CFLAGS:
+          - "-Wno-unused-function"
+          - "-Wno-unused-variable"
     entitlements:
       path: Lapis/Lapis.entitlements
