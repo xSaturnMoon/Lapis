@@ -68,10 +68,6 @@ struct HomeView: View {
         } message: {
             Text(launchErrorText)
         }
-        .onAppear {
-            // Initialize the native engine on first appear
-            GameLauncher.shared.initEngine()
-        }
     }
     
     // MARK: - Main Content

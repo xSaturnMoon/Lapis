@@ -101,6 +101,7 @@ class GameLauncher {
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
         // 4. Configure engine
+        initEngine()
         LapisEngine_setJavaHome(jrePath)
         LapisEngine_setGameHome(lapisRoot.path)
         
@@ -213,11 +214,16 @@ class GameLauncher {
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
         // 7. Launch on background thread
-        let result = LapisEngine_launchJVM(args)
-        
-        if result != 0 {
-            let engineError = LapisEngine_getLastError() ?? "Unknown error"
-            return "Launch failed (code \(result)):\n\(engineError)"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = LapisEngine_launchJVM(args)
+            
+            if result != 0 {
+                let engineError = LapisEngine_getLastError() ?? "Unknown error"
+                DispatchQueue.main.async {
+                    // Could post a notification or call a delegate here to show the error
+                    NSLog("[Lapis:GameLauncher] Launch failed (code \(result)):\n\(engineError)")
+                }
+            }
         }
         
         return nil
