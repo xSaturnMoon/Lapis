@@ -97,13 +97,26 @@ void init_bypassDyldLibValidation(void) {
     }
 }
 
+// Internal csops syscall
+extern int csops(pid_t pid, unsigned int ops, void *useraddr, size_t usersize);
+#define CS_DEBUGGED 0x10000000
+#define CS_OPS_STATUS 0
+
 bool LapisEngine_isJITEnabled(void) {
-    // Attempt to allocate executable memory (JIT)
-    void *ptr = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
-    if (ptr == MAP_FAILED) {
-        return false;
+    // 1. Check if process is marked as debugged (AltJIT / SideStore method)
+    int flags = 0;
+    if (csops(getpid(), CS_OPS_STATUS, &flags, sizeof(flags)) == 0) {
+        if (flags & CS_DEBUGGED) {
+            return true;
+        }
     }
-    // Cleanup
-    munmap(ptr, PAGE_SIZE);
-    return true;
+    
+    // 2. Direct memory allocation test (macOS / special entitlements)
+    void *ptr = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    if (ptr != MAP_FAILED) {
+        munmap(ptr, PAGE_SIZE);
+        return true;
+    }
+    
+    return false;
 }

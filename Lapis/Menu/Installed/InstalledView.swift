@@ -113,7 +113,7 @@ struct InstalledVersionRow: View {
                         .fill(LapisTheme.Colors.accent.opacity(0.1))
                         .frame(width: 48, height: 48)
                     
-                    Image(version.loader.iconName)
+                    LapisImage(version.loader.iconName)
                         .resizable()
                         .renderingMode(.template)
                         .aspectRatio(contentMode: .fit)

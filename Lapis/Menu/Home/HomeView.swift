@@ -136,13 +136,25 @@ struct HomeView: View {
                 
                 HStack {
                     // Engine status
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(LapisEngine_isBypassReady() ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
-                            .frame(width: 6, height: 6)
-                        Text(LapisEngine_isBypassReady() ? "Engine Ready" : "Engine Not Loaded")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(LapisTheme.Colors.textMuted)
+                    HStack(spacing: LapisTheme.Spacing.md) {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(LapisEngine_isBypassReady() ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
+                                .frame(width: 6, height: 6)
+                            Text(LapisEngine_isBypassReady() ? "Engine Ready" : "Engine Not Loaded")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(LapisTheme.Colors.textMuted)
+                        }
+                        
+                        let isJIT = LapisEngine_isJITEnabled()
+                        HStack(spacing: 4) {
+                            Image(systemName: isJIT ? "bolt.circle.fill" : "bolt.slash.circle.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
+                            Text(isJIT ? "JIT Enabled" : "JIT Inactive")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
+                        }
                     }
                     Spacer()
                     Text("v1.0.0")
@@ -173,7 +185,7 @@ struct HomeView: View {
                 RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                     .fill(LapisTheme.Colors.accent.opacity(0.1))
                     .frame(width: 56, height: 56)
-                Image(appState.selectedLoader.iconName)
+                LapisImage(appState.selectedLoader.iconName)
                     .resizable()
                     .renderingMode(.template)
                     .aspectRatio(contentMode: .fit)
@@ -192,17 +204,6 @@ struct HomeView: View {
                 Text("Installed Version (Tap to change)")
                     .font(.system(size: 11))
                     .foregroundColor(LapisTheme.Colors.textSecondary)
-            }
-            Spacer()
-            
-            HStack(spacing: 4) {
-                let isJIT = LapisEngine_isJITEnabled()
-                Image(systemName: isJIT ? "bolt.circle.fill" : "bolt.slash.circle.fill")
-                    .font(.system(size: 9))
-                    .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
-                Text(isJIT ? "JIT Enabled" : "JIT Inactive")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(isJIT ? LapisTheme.Colors.success : LapisTheme.Colors.danger)
             }
         }
         .padding(LapisTheme.Spacing.xl)
@@ -269,7 +270,7 @@ struct HomeView: View {
         .opacity(appState.selectedVersion == nil || !appState.isLoggedIn ? 0.4 : 1.0)
         .onAppear {
             appState.loadInstalledVersions()
-            if let last = appState.installedVersions.first(where: { $0.folderName == lastPlayedId }) {
+            if let last = appState.installedVersions.first(where: { "\($0.versionNumber)-\($0.loader.rawValue)" == lastPlayedId || $0.folderName == lastPlayedId }) {
                 appState.selectedVersion = GameVersion(id: last.versionNumber, type: "release", url: "", releaseTime: "")
                 appState.selectedLoader = last.loader
             }
@@ -295,6 +296,8 @@ struct HomeView: View {
     
     private func doLaunch(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
+        
+        lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
         
         withAnimation { isLaunching = true }
         

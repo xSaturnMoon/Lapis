@@ -62,6 +62,16 @@ class AppState: ObservableObject {
     }
 }
 
+// MARK: - Lapis Image Helper
+func LapisImage(_ name: String) -> Image {
+    if let uiImage = UIImage(named: name + ".png") ?? UIImage(named: name) {
+        return Image(uiImage: uiImage)
+    } else {
+        // Fallback
+        return Image(systemName: "questionmark.square.dashed")
+    }
+}
+
 // MARK: - Sidebar Tabs
 enum SidebarTab: String, CaseIterable, Identifiable {
     case home

@@ -3,6 +3,7 @@ import SwiftUI
 struct VersionsView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var mojangService = MojangService()
+    @AppStorage("lapis_last_played_v2") private var lastPlayedId: String = ""
     @State private var selectedMajor: String? = nil
     @State private var selectedSubVersion: String? = nil
     
@@ -35,14 +36,14 @@ struct VersionsView: View {
                                     }
                                 } label: {
                                     HStack {
-                                        Image(loader.iconName).resizable().aspectRatio(contentMode: .fit).frame(width: 14, height: 14)
+                                        LapisImage(loader.iconName).resizable().aspectRatio(contentMode: .fit).frame(width: 14, height: 14)
                                         Text(loader.rawValue)
                                     }
                                 }
                             }
                         } label: {
                             HStack(spacing: LapisTheme.Spacing.sm) {
-                                Image(appState.selectedLoader.iconName)
+                                LapisImage(appState.selectedLoader.iconName)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 12, height: 12)
@@ -122,6 +123,7 @@ struct VersionsView: View {
                             withAnimation(LapisTheme.Animation.smooth) {
                                 appState.selectedVersion = version
                                 appState.selectedSubVersion = subVersion
+                                lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
                                 appState.currentTab = .home
                             }
                         }
@@ -163,7 +165,7 @@ struct MajorVersionCard: View {
                 
                 // Loader icon watermark
                 VStack {
-                    Image(loader.iconName)
+                    LapisImage(loader.iconName)
                         .resizable()
                         .renderingMode(.template)
                         .aspectRatio(contentMode: .fit)
@@ -225,7 +227,7 @@ struct VersionSelectionPanel: View {
                             .frame(height: 100)
                         
                         VStack(spacing: LapisTheme.Spacing.sm) {
-                            Image(loader.iconName)
+                            LapisImage(loader.iconName)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 28, height: 28)

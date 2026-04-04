@@ -115,7 +115,7 @@ struct ModrinthBrowserView: View {
                         .tracking(1)
                     
                     HStack(spacing: LapisTheme.Spacing.sm) {
-                        Image(version.loader.iconName)
+                        LapisImage(version.loader.iconName)
                             .resizable()
                             .renderingMode(.template)
                             .aspectRatio(contentMode: .fit)
