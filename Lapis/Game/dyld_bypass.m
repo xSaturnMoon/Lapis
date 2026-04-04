@@ -61,17 +61,7 @@ static void* my_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t 
     return orig_mmap(addr, len, prot, flags, fd, offset);
 }
 
-static int (*orig_UIApplicationMain)(int argc, char *argv[], void *principalClassName, void *delegateClassName) = NULL;
-
-static int my_UIApplicationMain(int argc, char *argv[], void *principalClassName, void *delegateClassName) {
-    NSLog(@"[Lapis:Bypass] AVOIDED duplicate UIApplicationMain call from libjli/glfw!");
-    // Block the thread forever, as the caller (OpenJDK/GLFW) expects this function to run the main GUI event loop
-    // and never return. This allows the Java threads running in the background to continue executing normally.
-    while (1) {
-        sleep(1000);
-    }
-    return 0;
-}
+// Deleted my_UIApplicationMain
 
 // ============================================================
 // PUBLIC API
@@ -87,8 +77,7 @@ void init_bypassDyldLibValidation(void) {
     int result = rebind_symbols((struct rebinding[]){
         {"fcntl",  my_fcntl,  (void **)&orig_fcntl},
         {"mmap",   my_mmap,   (void **)&orig_mmap},
-        {"UIApplicationMain", my_UIApplicationMain, (void **)&orig_UIApplicationMain},
-    }, 3);
+    }, 2);
 
     if (result == 0) {
         NSLog(@"[Lapis:Bypass] ✅ dyld bypass initialized successfully");

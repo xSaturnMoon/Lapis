@@ -12,8 +12,8 @@ class GameLauncher {
     
     /// Initialize the native engine (dyld bypass). Call once at app start.
     func initEngine() {
-        LapisEngine_init()
-        NSLog("[Lapis:GameLauncher] Engine initialized, bypass ready: \(LapisEngine_isBypassReady())")
+        init_bypassDyldLibValidation()
+        NSLog("[Lapis:GameLauncher] Engine initialized")
     }
     
     // MARK: - JRE Management
@@ -99,8 +99,8 @@ class GameLauncher {
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
         // 4. Configure engine
-        LapisEngine_setJavaHome(jrePath)
-        LapisEngine_setGameHome(lapisRoot.path)
+        let jliPath = jrePath + "/lib/libjli.dylib"
+        setenv("INTERNAL_JLI_PATH", jliPath, 1)
         
         // Save input mode
         UserDefaults.standard.set(config.inputMode == .touch ? "touch" : "keyboard", forKey: "lapis_input_mode")
@@ -208,11 +208,14 @@ class GameLauncher {
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
         // 7. Launch
-        let result = LapisEngine_launchJVM(args)
+        var cArgs: [UnsafePointer<Int8>?] = args.map { UnsafePointer(strdup($0)) }
+        let result = launchJVM(Int32(cArgs.count), &cArgs, jliPath)
+        
+        // Free cArgs
+        for param in cArgs { free(UnsafeMutableRawPointer(mutating: param)) }
         
         if result != 0 {
-            let engineError = LapisEngine_getLastError() ?? "Unknown error"
-            return "Launch failed (code \(result)):\n\(engineError)"
+            return "Launch failed (code \(result))"
         }
         
         return nil
