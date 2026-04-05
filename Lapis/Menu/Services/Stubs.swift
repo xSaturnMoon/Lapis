@@ -6,33 +6,6 @@ import Darwin
 @_silgen_name("csops")
 func csops(_ pid: Int32, _ ops: UInt32, _ useraddr: UnsafeMutableRawPointer?, _ usersize: Int) -> Int32
 
-// MARK: - Game Launcher Stub
-class GameLauncher {
-    static let shared = GameLauncher()
-    
-    struct LaunchConfig {
-        let versionId: String
-        let loader: ModLoader
-        let inputMode: InputMode
-        let playerName: String
-        let playerUUID: String
-        let accessToken: String
-    }
-    
-    func initEngine() {
-        print("Stub: Engine initialized")
-    }
-    
-    func launch(config: LaunchConfig, completion: @escaping (String?) -> Void) {
-        print("Stub: Launching \(config.versionId)")
-        
-        // Mock a launching delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            completion(nil) // Success
-        }
-    }
-}
-
 // MARK: - Engine Functions Stubs
 func LapisEngine_isJITEnabled() -> Bool {
     // 1. Try to dynamically find and use pthread_jit_write_prot_np (iOS 14.2+)

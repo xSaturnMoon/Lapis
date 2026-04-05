@@ -20,7 +20,15 @@ targets:
     platform: iOS
     deploymentTarget: "16.0"
     sources:
-      - path: Lapis
+      - path: Lapis/Menu
+      - path: Lapis/Game
+      - path: Lapis/LapisApp.swift
+      - path: Lapis/Info.plist
+      - path: Lapis/Lapis.entitlements
+    frameworks:
+      - path: Lapis/Game/Native
+        implicit: true
+        embed: true
     settings:
       base:
         INFOPLIST_FILE: Lapis/Info.plist

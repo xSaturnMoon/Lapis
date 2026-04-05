@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var showLaunchError = false
     @State private var launchErrorText = ""
     @State private var isLaunching = false
+    @State private var showGameView = false
     
     var body: some View {
         ZStack {
@@ -167,6 +168,12 @@ struct HomeView: View {
                 .padding(.bottom, LapisTheme.Spacing.lg)
             }
         }
+        .fullScreenCover(isPresented: $showGameView) {
+            if let version = appState.selectedVersion {
+                GameViewContainer(inputMode: selectedInputMode == .mouseKeyboard ? .mouseKeyboard : .touch)
+                    .ignoresSafeArea()
+            }
+        }
     }
     
     // MARK: - Version Card
@@ -301,7 +308,10 @@ struct HomeView: View {
         
         lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
         
-        withAnimation { isLaunching = true }
+        withAnimation { 
+            isLaunching = true 
+            showGameView = true
+        }
         
         let config = GameLauncher.LaunchConfig(
             versionId: version.id,

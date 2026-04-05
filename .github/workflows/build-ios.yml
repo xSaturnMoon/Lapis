@@ -37,6 +37,35 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO
 
+      - name: Download and Extract PojavLauncher Engine
+        run: |
+          echo "=== Downloading Latest PojavLauncher Official IPA ==="
+          # Get the latest release tag
+          LATEST_TAG=$(curl -s https://api.github.com/repos/PojavLauncherTeam/PojavLauncher_iOS/releases/latest | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Download IPA
+          curl -L -o pojav.ipa "https://github.com/PojavLauncherTeam/PojavLauncher_iOS/releases/download/${LATEST_TAG}/PojavLauncher-${LATEST_TAG}.ipa" || \
+          curl -L -o pojav.ipa $(curl -s https://api.github.com/repos/PojavLauncherTeam/PojavLauncher_iOS/releases/latest | grep "browser_download_url" | grep ".ipa" | head -1 | cut -d '"' -f 4)
+          
+          echo "=== Extracting Frameworks ==="
+          unzip -q pojav.ipa -d temp_ipa
+          
+          # Path to frameworks in Pojav IPA: Payload/PojavLauncher.app/Frameworks
+          APP_DIR=$(ls temp_ipa/Payload/)
+          mkdir -p Lapis/Game/Native
+          
+          echo "Copying frameworks from $APP_DIR..."
+          cp -r "temp_ipa/Payload/$APP_DIR/Frameworks"/* Lapis/Game/Native/ 2>/dev/null || true
+          
+          # Clean up
+          rm -rf temp_ipa pojav.ipa
+          echo "=== Engine Frameworks Ready in Lapis/Game/Native ==="
+          ls -la Lapis/Game/Native/
+
+      - name: Generate Xcode Project
+        run: xcodegen generate --spec project.yml
+
       - name: Create IPA
         run: |
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
