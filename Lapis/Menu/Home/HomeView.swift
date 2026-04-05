@@ -169,7 +169,7 @@ struct HomeView: View {
             }
         }
         .fullScreenCover(isPresented: $showGameView) {
-            if let version = appState.selectedVersion {
+            if appState.selectedVersion != nil {
                 GameViewContainer(inputMode: selectedInputMode == .keyboard ? .keyboard : .touch)
                     .ignoresSafeArea()
             }
@@ -274,7 +274,7 @@ struct HomeView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                         .fill(LinearGradient(
-                            colors: isVersionReady ? [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark] : [LapisTheme.Colors.secondary, LapisTheme.Colors.secondaryDark],
+                            colors: isVersionReady ? [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark] : [LapisTheme.Colors.textSecondary, LapisTheme.Colors.textMuted],
                             startPoint: .top, endPoint: .bottom
                         ))
                     if pulseAnimation && isVersionReady {
@@ -285,7 +285,7 @@ struct HomeView: View {
                     }
                 }
             )
-            .shadow(color: (isVersionReady ? LapisTheme.Colors.accent : LapisTheme.Colors.secondary).opacity(0.3), radius: 16, y: 4)
+            .shadow(color: (isVersionReady ? LapisTheme.Colors.accent : LapisTheme.Colors.textSecondary).opacity(0.3), radius: 16, y: 4)
         }
         .buttonStyle(.plain)
         .disabled(appState.selectedVersion == nil || !appState.isLoggedIn || isLaunching)
