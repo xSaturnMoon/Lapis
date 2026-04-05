@@ -2,6 +2,10 @@ import Foundation
 import SwiftUI
 import Darwin
 
+// MARK: - External C Functions
+@_silgen_name("csops")
+func csops(_ pid: Int32, _ ops: UInt32, _ useraddr: UnsafeMutableRawPointer?, _ usersize: Int) -> Int32
+
 // MARK: - Game Launcher Stub
 class GameLauncher {
     static let shared = GameLauncher()
@@ -53,7 +57,17 @@ func LapisEngine_isJITEnabled() -> Bool {
         if res == 0 { return true }
     }
     
-    // 3. Last fallback: check for debugger/ptrace flag
+    // 3. Try to check for CS_DEBUGGED flag using csops (standard for many JIT enablers)
+    var cs_flags: UInt32 = 0
+    // CS_OPS_STATUS = 0
+    if csops(getpid(), 0, &cs_flags, MemoryLayout<UInt32>.size) == 0 {
+        // CS_DEBUGGED = 0x10000000
+        if (cs_flags & 0x10000000) != 0 {
+            return true
+        }
+    }
+
+    // 4. Last fallback: check for debugger/ptrace flag via sysctl
     var info = kinfo_proc()
     var info_size = MemoryLayout<kinfo_proc>.size
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
