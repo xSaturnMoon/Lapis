@@ -49,8 +49,6 @@ jobs:
 
       - name: Build
         run: |
-          echo "Verifying Frameworks Path..."
-          ls -d "$GITHUB_WORKSPACE/Lapis/Frameworks/LibPojav.framework" || (echo "ERROR: NOT FOUND!" && exit 1)
           
           xcodebuild clean build \
             -project Lapis.xcodeproj \
