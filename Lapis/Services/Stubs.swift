@@ -31,22 +31,33 @@ class GameLauncher {
 
 // MARK: - Engine Functions Stubs
 func LapisEngine_isJITEnabled() -> Bool {
-    // Try to map a page with MAP_JIT to see if we have the JIT entitlement
-    let size = Int(getpagesize())
-    let address = mmap(nil, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0)
-    
-    if address != MAP_FAILED {
-        munmap(address, size)
+    // 1. Try Apple's official JIT write protection toggle (iOS 14.2+)
+    // This is the most reliable way to check if the entitlement is actually working
+    if #available(iOS 14.2, *) {
+        // If we can toggle JIT write protection without crashing, JIT is available
+        pthread_jit_write_prot_np(1)
+        pthread_jit_write_prot_np(0)
         return true
     }
+
+    // 2. Fallback: Standard mmap with MAP_JIT
+    let size = Int(getpagesize())
+    let address = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0)
     
-    // Fallback: check if we are being debugged (which also enables JIT usually)
+    if address != MAP_FAILED {
+        // Try to transition to EXEC to confirm JIT capability
+        let res = mprotect(address, size, PROT_READ | PROT_EXEC)
+        munmap(address, size)
+        if res == 0 { return true }
+    }
+    
+    // 3. Last fallback: check for debugger/ptrace flag
     var info = kinfo_proc()
     var info_size = MemoryLayout<kinfo_proc>.size
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
     
     if sysctl(&mib, 4, &info, &info_size, nil, 0) == 0 {
-        // P_TRACED is 0x00000800
+        // P_TRACED = 0x00000800
         return (info.kp_proc.p_flag & 0x00000800) != 0
     }
     
