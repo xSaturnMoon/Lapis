@@ -23,20 +23,24 @@ jobs:
 
       - name: Download and Extract Amethyst Engine
         run: |
+          echo "=== Downloading Amethyst IPA ==="
           curl -L -o amethyst.zip "https://nightly.link/AngelAuraMC/Amethyst-iOS/workflows/development/main/org.angelauramc.amethyst-ios.ipa.zip"
           unzip -q amethyst.zip -d temp_zip
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
+          echo "Found IPA: $IPA_FILE"
           unzip -q "$IPA_FILE" -d temp_ipa
           
-          # Definiamo la cartella dei framework in modo assoluto
-          FW_DIR="$GITHUB_WORKSPACE/Lapis/Frameworks"
-          mkdir -p "$FW_DIR"
+          echo "=== Setting up Frameworks Directory ==="
+          mkdir -p "$GITHUB_WORKSPACE/Lapis/Frameworks"
           
-          echo "=== Extracting Frameworks to $FW_DIR ==="
-          find temp_ipa -name "*.framework" -type d -exec cp -rv {} "$FW_DIR/" \;
+          echo "=== Copying Frameworks with symlink preservation ==="
+          # Use -av to preserve symlinks and attributes
+          cp -av temp_ipa/Payload/*.app/Frameworks/*.framework "$GITHUB_WORKSPACE/Lapis/Frameworks/"
           
-          echo "=== Verification ==="
-          ls -R "$FW_DIR"
+          echo "=== Frameworks list (Debug) ==="
+          ls -R "$GITHUB_WORKSPACE/Lapis/Frameworks/"
+          
+          echo "=== Done ==="
           rm -rf temp_zip temp_ipa amethyst.zip
 
       - name: Generate Xcode Project
