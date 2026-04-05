@@ -12,7 +12,7 @@ class GameLauncher {
     
     /// Initialize the native engine (dyld bypass). Call once at app start.
     func initEngine() {
-        init_bypassDyldLibValidation()
+        LapisEngine_init()
         NSLog("[Lapis:GameLauncher] Engine initialized")
     }
     
@@ -99,6 +99,9 @@ class GameLauncher {
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
         // 4. Configure engine
+        LapisEngine_setJavaHome(jrePath)
+        LapisEngine_setGameHome(gameDir.path)
+        
         let jliPath = jrePath + "/lib/libjli.dylib"
         setenv("INTERNAL_JLI_PATH", jliPath, 1)
         
@@ -152,7 +155,8 @@ class GameLauncher {
             "-XX:+DisablePrimordialThreadGuardPages",
             "-Dfml.earlyprogresswindow=false",
             "-Djava.awt.headless=true",
-            "-Dapple.awt.UIElement=true"
+            "-Dapple.awt.UIElement=true",
+            "-Dorg.lwjgl.opengl.Display.noinput=true"
         ]
         
         // Java module system flags
@@ -208,11 +212,9 @@ class GameLauncher {
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
         // 7. Launch
-        var cArgs: [UnsafePointer<Int8>?] = args.map { UnsafePointer(strdup($0)) }
-        let result = launchJVM(Int32(cArgs.count), &cArgs, jliPath)
-        
-        // Free cArgs
-        for param in cArgs { free(UnsafeMutableRawPointer(mutating: param)) }
+        DispatchQueue.main.async { LapisSurface_show() }
+        let result = LapisEngine_launchJVM(args)
+        DispatchQueue.main.async { LapisSurface_hide() }
         
         if result != 0 {
             return "Launch failed (code \(result))"

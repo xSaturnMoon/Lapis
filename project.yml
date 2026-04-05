@@ -41,8 +41,5 @@ targets:
         OTHER_CFLAGS:
           - "-Wno-unused-function"
           - "-Wno-unused-variable"
-        HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/Lapis/Game/external"
-          - "$(SRCROOT)/Lapis/Game/external/ANGLE"
     entitlements:
       path: Lapis/Lapis.entitlements

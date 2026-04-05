@@ -8,9 +8,9 @@
 #ifndef Lapis_Bridging_Header_h
 #define Lapis_Bridging_Header_h
 
-#import "JavaLauncher.h"
-#import "ios_uikit_bridge.h"
-#import "main_hook.h"
+#import "LapisLauncher.h"
+#import "LapisSurface.h"
 #import "dyld_bypass.h"
+#import "fishhook.h"
 
 #endif
