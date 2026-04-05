@@ -31,12 +31,14 @@ class GameLauncher {
 
 // MARK: - Engine Functions Stubs
 func LapisEngine_isJITEnabled() -> Bool {
-    // 1. Try Apple's official JIT write protection toggle (iOS 14.2+)
-    // This is the most reliable way to check if the entitlement is actually working
-    if #available(iOS 14.2, *) {
-        // If we can toggle JIT write protection without crashing, JIT is available
-        pthread_jit_write_prot_np(1)
-        pthread_jit_write_prot_np(0)
+    // 1. Try to dynamically find and use pthread_jit_write_prot_np (iOS 14.2+)
+    typealias JITWriteProtFunc = @convention(c) (Int32) -> Void
+    let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)
+    if let sym = dlsym(RTLD_DEFAULT, "pthread_jit_write_prot_np") {
+        let f = unsafeBitCast(sym, to: JITWriteProtFunc.self)
+        // If we can call it without crashing, we have JIT
+        f(1)
+        f(0)
         return true
     }
 
