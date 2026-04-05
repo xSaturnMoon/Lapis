@@ -23,23 +23,39 @@ jobs:
 
       - name: Download and Extract Amethyst Engine
         run: |
+          echo "=== Debug: Workspace structure before starting ==="
+          ls -R . | grep ":$" | head -n 20
+          
           echo "=== Downloading Amethyst IPA ==="
           curl -L -o amethyst.zip "https://nightly.link/AngelAuraMC/Amethyst-iOS/workflows/development/main/org.angelauramc.amethyst-ios.ipa.zip"
           unzip -q amethyst.zip -d temp_zip
+          
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
+          if [ -z "$IPA_FILE" ]; then
+            echo "ERROR: No IPA file found in the downloaded zip!"
+            ls -R temp_zip
+            exit 1
+          fi
+          
           echo "Found IPA: $IPA_FILE"
           unzip -q "$IPA_FILE" -d temp_ipa
           
           echo "=== Setting up Frameworks Directory ==="
-          mkdir -p "$GITHUB_WORKSPACE/Lapis/Frameworks"
+          # Create the folder where the project expects frameworks
+          mkdir -p Lapis/Frameworks
           
-          echo "=== Copying Frameworks with symlink preservation ==="
-          # Use -av to preserve symlinks and attributes
-          cp -av temp_ipa/Payload/*.app/Frameworks/*.framework "$GITHUB_WORKSPACE/Lapis/Frameworks/"
+          echo "=== Copying Frameworks with find ==="
+          # Search for all .framework directories and copy them preserving attributes
+          find temp_ipa -name "*.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
           
-          echo "=== Frameworks list (Debug) ==="
-          ls -R "$GITHUB_WORKSPACE/Lapis/Frameworks/"
+          echo "=== Verifying extraction ==="
+          if [ ! -d "Lapis/Frameworks/LibPojav.framework" ]; then
+            echo "ERROR: LibPojav.framework was NOT found in the extracted IPA!"
+            find temp_ipa -name "*.framework"
+            exit 1
+          fi
           
+          ls -R Lapis/Frameworks/
           echo "=== Done ==="
           rm -rf temp_zip temp_ipa amethyst.zip
 
