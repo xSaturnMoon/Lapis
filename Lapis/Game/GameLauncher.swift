@@ -15,40 +15,88 @@ class GameLauncher {
         let playerName: String
         let playerUUID: String
         let accessToken: String
+        let memoryAllocation: Int
     }
     
-    // Il JREManager può essere il GameDownloader o un servizio dedicato
-    // Per ora usiamo GameDownloader per coerenza con il progetto
-    
     func launch(config: LaunchConfig, completion: @escaping (String?) -> Void) {
-        NSLog("[GameLauncher] Inizio sequenza di lancio per: \(config.versionId)")
+        NSLog("[GameLauncher] Avvio sequenza di lancio professionale per: \(config.versionId)")
         
-        // 1. Prepara gli argomenti di sistema per JavaLauncher_main
-        // NOTA: Questi verranno passati al ponte Objective-C
-        let args: [String] = [
-            "java", 
-            "-Xmx2048M", 
-            "-Djava.library.path=...", 
-            "-cp", "...", 
-            "net.minecraft.client.main.Main",
-            "--username", config.playerName,
-            "--version", config.versionId,
-            "--uuid", config.playerUUID,
-            "--accessToken", config.accessToken,
-            "--userType", "msa"
+        let gameURL = getGameDirectory()
+        let jreURL = getJREDirectory()
+        let versionURL = gameURL.appendingPathComponent("versions/\(config.versionId)")
+        let clientJarURL = versionURL.appendingPathComponent("\(config.versionId).jar")
+        
+        // 1. Verifica esistenza file critici
+        guard FileManager.default.fileExists(atPath: clientJarURL.path) else {
+            completion("Errore: JAR di gioco non trovato in \(clientJarURL.lastPathComponent)")
+            return
+        }
+        
+        // 2. Costruisci il Classpath completo (Librerie + Client Jar)
+        let librariesURL = gameURL.appendingPathComponent("libraries")
+        let classpath = buildClasspath(librariesURL: librariesURL, clientJarURL: clientJarURL)
+        
+        // 3. Prepara gli argomenti di lancio per l'engine Pojav
+        var args: [String] = [
+            "java",
+            "-Xmx\(config.memoryAllocation)M",
+            "-Djava.home=\(jreURL.path)",
+            "-Djava.library.path=\(versionURL.appendingPathComponent("natives").path)",
+            "-Dapple.laf.useScreenMenuBar=true",
+            "-cp", classpath,
+            "net.minecraft.client.main.Main"
         ]
         
-        // 2. Esegui il lancio tramite il ponte
+        // Argomenti specifici di Minecraft
+        args.append(contentsOf: [
+            "--username", config.playerName,
+            "--version", config.versionId,
+            "--gameDir", gameURL.path,
+            "--assetsDir", gameURL.appendingPathComponent("assets").path,
+            "--assetIndex", config.versionId,
+            "--uuid", config.playerUUID,
+            "--accessToken", config.accessToken,
+            "--userType", "msa",
+            "--versionType", "release"
+        ])
+        
+        NSLog("[GameLauncher] Classpath costruito con \(classpath.components(separatedBy: ":").count) elementi.")
+        
+        // 4. Esegui il lancio tramite il ponte nativo
         LauncherBridge.launch(withArgs: args) { exitCode in
             if exitCode == 0 {
+                NSLog("[GameLauncher] Minecraft terminato con successo.")
                 completion(nil)
             } else {
-                completion("Errore durante l'avvio (Code: \(exitCode))")
+                NSLog("[GameLauncher] Errore critico durante l'esecuzione del motore. Code: \(exitCode)")
+                completion("Launch Error (Code: \(exitCode)). Controlla i log per i dettagli.")
             }
         }
     }
     
+    private func buildClasspath(librariesURL: URL, clientJarURL: URL) -> String {
+        var items = [String]()
+        
+        // Aggiungi ricorsivamente tutti i jar dalle librerie
+        if let enumerator = FileManager.default.enumerator(at: librariesURL, includingPropertiesForKeys: nil) {
+            for case let fileURL as URL in enumerator {
+                if fileURL.pathExtension == "jar" {
+                    items.append(fileURL.path)
+                }
+            }
+        }
+        
+        // Aggiungi il jar principale di Minecraft
+        items.append(clientJarURL.path)
+        
+        return items.joined(separator: ":")
+    }
+    
     private func getGameDirectory() -> URL {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("minecraft")
+    }
+    
+    private func getJREDirectory() -> URL {
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("runtime/jre17-arm64")
     }
 }

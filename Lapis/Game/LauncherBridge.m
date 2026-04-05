@@ -7,32 +7,43 @@ typedef int (*JavaLauncherMainFunc)(int argc, char **argv);
 
 + (void)launchWithArgs:(NSArray<NSString *> *)args completion:(void(^)(int exitCode))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        NSLog(@"[LauncherBridge] Preparazione lancio engine...");
+        // Load the engine from the current process (it will be linked via project.yml)
+        void *handle = dlopen(NULL, RTLD_NOW);
+        JavaLauncherMainFunc func = (JavaLauncherMainFunc)dlsym(handle, "JavaLauncher_main");
         
-        // Converti NSArray in argc/argv
+        if (!func) {
+            NSLog(@"[LapisEngine] FATAL: JavaLauncher_main symbol not found in any loaded framework.");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(-2);
+            });
+            return;
+        }
+        
         int argc = (int)args.count;
         char **argv = malloc(sizeof(char *) * (argc + 1));
+        NSLog(@"[LapisEngine] Starting Minecraft Engine with %d arguments...", argc);
+        
         for (int i = 0; i < argc; i++) {
             argv[i] = strdup([args[i] UTF8String]);
+            NSLog(@"[LapisEngine] [%d] %s", i, argv[i]);
+            
+            // Auto-detect JRE path to set JAVA_HOME environmental variable
+            if ([args[i] containsString:@"jre17-arm64"]) {
+                setenv("JAVA_HOME", [args[i] UTF8String], 1);
+                NSLog(@"[LapisEngine] Environment: Set JAVA_HOME to %s", argv[i]);
+            }
         }
         argv[argc] = NULL;
         
-        // Tenta di trovare JavaLauncher_main dinamicamente dai framework caricati
-        // (Verranno caricati via GitHub Actions in Lapis/Game/Native)
-        void *handle = RTLD_DEFAULT;
-        JavaLauncherMainFunc mainFunc = (JavaLauncherMainFunc)dlsym(handle, "JavaLauncher_main");
+        // Essential environment variables for Java on iOS
+        setenv("PRINT_ALL_EXCEPTIONS", "1", 1);
+        setenv("JLI_SEP", ":", 1);
         
-        int result = -1;
-        if (mainFunc) {
-            NSLog(@"[LauncherBridge] Engine trovato! Avvio in corso...");
-            result = mainFunc(argc, argv);
-        } else {
-            NSLog(@"[LauncherBridge] ERROR: JavaLauncher_main non trovato nei framework.");
-            // Simulazione per test se l'engine manca
-            [NSThread sleepForTimeInterval:2.0];
-        }
+        NSLog(@"[LapisEngine] Calling JavaLauncher_main...");
+        int result = func(argc, argv);
+        NSLog(@"[LapisEngine] Engine terminated. Exit code: %d", result);
         
-        // Clean up
+        // Cleanup
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
         
