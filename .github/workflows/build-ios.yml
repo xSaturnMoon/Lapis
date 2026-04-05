@@ -79,13 +79,13 @@ jobs:
           if [ -d "$AMETHYST_APP/runtime" ]; then cp -rf "$AMETHYST_APP/runtime" "$APP_PATH/"; fi
           if [ -d "$AMETHYST_APP/java_runtimes" ]; then cp -rf "$AMETHYST_APP/java_runtimes" "$APP_PATH/"; fi
           
-          echo "=== Deep Signing Engine Components ==="
-          # Sign all frameworks and dylibs recursively
-          find "$APP_PATH/Frameworks" -name "*.framework" -exec codesign --force --deep --sign - {} \;
-          find "$APP_PATH/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \;
+          echo "=== Deep Signing Engine Components with Entitlements ==="
+          # Sign all frameworks and dylibs recursively using the app's entitlements
+          find "$APP_PATH/Frameworks" -name "*.framework" -exec codesign --force --deep --sign - --entitlements Lapis/Lapis.entitlements {} \;
+          find "$APP_PATH/Frameworks" -name "*.dylib" -exec codesign --force --sign - --entitlements Lapis/Lapis.entitlements {} \;
           
-          # Sign the main app bundle
-          codesign --force --deep --sign - "$APP_PATH"
+          # Sign the main app bundle with entitlements
+          codesign --force --deep --sign - --entitlements Lapis/Lapis.entitlements "$APP_PATH"
           
           # Pack into IPA
           mkdir -p Payload
