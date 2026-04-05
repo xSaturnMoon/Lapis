@@ -1,6 +1,6 @@
 #import "ios_uikit_bridge.h"
 
-#include "jni.h"
+
 #include <assert.h>
 #include <dlfcn.h>
 
@@ -22,13 +22,7 @@
 int clientAPI;
 
 void JNI_LWJGL_changeRenderer(const char* value_c) {
-    JNIEnv *env;
-    (*runtimeJavaVMPtr)->GetEnv(runtimeJavaVMPtr, (void **)&env, JNI_VERSION_1_4);
-    jstring key = (*env)->NewStringUTF(env, "org.lwjgl.opengl.libname");
-    jstring value = (*env)->NewStringUTF(env, value_c);
-    jclass clazz = (*env)->FindClass(env, "java/lang/System");
-    jmethodID method = (*env)->GetStaticMethodID(env, clazz, "setProperty", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
-    (*env)->CallStaticObjectMethod(env, clazz, method, key, value);
+    // Removed JNI call
 }
 
 void pojavTerminate() {
@@ -45,7 +39,7 @@ int pojavInit(BOOL useStackQueue) {
     clientAPI = GLFW_OPENGL_API;
     isInputReady = 1;
     isUseStackQueueCall = useStackQueue;
-    return JNI_TRUE;
+    return 1;
 }
 
 int pojavInitOpenGL() {
