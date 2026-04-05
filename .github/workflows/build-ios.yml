@@ -28,13 +28,14 @@ jobs:
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
           unzip -q "$IPA_FILE" -d temp_ipa
           mkdir -p Lapis/Frameworks
-          APP_DIR=$(ls temp_ipa/Payload/ | grep ".app" | head -1)
-          if [ -d "temp_ipa/Payload/$APP_DIR/Frameworks" ]; then
-            cp -r "temp_ipa/Payload/$APP_DIR/Frameworks"/* Lapis/Frameworks/
-          fi
-          rm -rf temp_zip temp_ipa amethyst.zip
-          echo "=== Engine Frameworks Ready in Lapis/Frameworks ==="
+          echo "=== Searching for Frameworks in Downloaded IPA ==="
+          # Search for any .framework folder inside temp_ipa and copy it to Lapis/Frameworks
+          find temp_ipa -name "*.framework" -type d -exec cp -r {} Lapis/Frameworks/ \;
+          
+          echo "=== Frameworks Extraction Results ==="
           ls -R Lapis/Frameworks/
+          du -sh Lapis/Frameworks/
+          rm -rf temp_zip temp_ipa amethyst.zip
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
