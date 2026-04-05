@@ -25,4 +25,4 @@ CGPoint lastVirtualMousePoint;
 + (GameSurfaceView *)surface;
 + (BOOL)isRunning;
 
-
+@end
