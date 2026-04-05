@@ -8,9 +8,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     let appState = AppState()
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // CRITICAL: Initialize dyld bypass on the main thread at app launch
-        // before dyld resolves other symbols
-        GameLauncher.shared.initEngine()
+        // CRITICAL: Dyld bypass and environment setup are now managed by GameLauncher via the Game module
         
         // Create app directories on first launch
         createDirectories()

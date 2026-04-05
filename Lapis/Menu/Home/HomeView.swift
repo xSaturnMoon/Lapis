@@ -170,7 +170,7 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showGameView) {
             if let version = appState.selectedVersion {
-                GameViewContainer(inputMode: selectedInputMode == .mouseKeyboard ? .mouseKeyboard : .touch)
+                GameViewContainer(inputMode: selectedInputMode == .keyboard ? .keyboard : .touch)
                     .ignoresSafeArea()
             }
         }
