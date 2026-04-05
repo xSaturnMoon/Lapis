@@ -12,7 +12,6 @@ class GameLauncher {
     
     /// Initialize the native engine (dyld bypass). Call once at app start.
     func initEngine() {
-        LapisEngine_init()
         NSLog("[Lapis:GameLauncher] Engine initialized")
     }
     
@@ -99,8 +98,8 @@ class GameLauncher {
         try? fm.createDirectory(at: modsDir, withIntermediateDirectories: true)
         
         // 4. Configure engine
-        LapisEngine_setJavaHome(jrePath)
-        LapisEngine_setGameHome(gameDir.path)
+        setenv("JAVA_HOME", jrePath, 1)
+        setenv("POJAV_HOME", gameDir.path, 1)
         
         let jliPath = jrePath + "/lib/libjli.dylib"
         setenv("INTERNAL_JLI_PATH", jliPath, 1)
@@ -213,7 +212,7 @@ class GameLauncher {
         
         // 7. Launch via SurfaceViewController
         DispatchQueue.main.async {
-            let surface = SurfaceViewController(args: args, username: config.playerName)
+            guard let surface = SurfaceViewController(args: args, username: config.playerName) else { return }
             surface.modalPresentationStyle = .fullScreen
             
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
