@@ -7,31 +7,35 @@ typedef int (*JavaLauncherMainFunc)(int argc, char **argv);
 
 + (void)launchWithArgs:(NSArray<NSString *> *)args completion:(void(^)(int exitCode))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        // Load the engine from the current process (it will be linked via project.yml)
+        // Load the engine from the current process
         void *handle = dlopen(NULL, RTLD_NOW);
+        
+        // Try multiple symbol names (Old Pojav and likely Amethyst names)
         JavaLauncherMainFunc func = (JavaLauncherMainFunc)dlsym(handle, "JavaLauncher_main");
+        if (!func) func = (JavaLauncherMainFunc)dlsym(handle, "AmethystLauncher_main");
+        if (!func) func = (JavaLauncherMainFunc)dlsym(handle, "main_java");
         
         if (!func) {
-            NSLog(@"[LapisEngine] FATAL: JavaLauncher_main symbol not found in any loaded framework.");
+            NSLog(@"[LapisEngine] FATAL: Launcher entry point not found. Symbols searched: JavaLauncher_main, AmethystLauncher_main, main_java");
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(-2);
             });
             return;
         }
         
+        // Setup JAVA_HOME pointing to our bundled runtime
+        NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+        NSString *jrePath = [bundlePath stringByAppendingPathComponent:@"runtime"]; // Amethyst folder
+        if (![[NSFileManager defaultManager] fileExistsAtPath:jrePath]) {
+            jrePath = [bundlePath stringByAppendingPathComponent:@"java_runtimes"]; // Alternative
+        }
+        setenv("JAVA_HOME", [jrePath UTF8String], 1);
+        NSLog(@"[LapisEngine] JAVA_HOME set to: %@", jrePath);
+        
         int argc = (int)args.count;
         char **argv = malloc(sizeof(char *) * (argc + 1));
-        NSLog(@"[LapisEngine] Starting Minecraft Engine with %d arguments...", argc);
-        
         for (int i = 0; i < argc; i++) {
             argv[i] = strdup([args[i] UTF8String]);
-            NSLog(@"[LapisEngine] [%d] %s", i, argv[i]);
-            
-            // Auto-detect JRE path to set JAVA_HOME environmental variable
-            if ([args[i] containsString:@"jre17-arm64"]) {
-                setenv("JAVA_HOME", [args[i] UTF8String], 1);
-                NSLog(@"[LapisEngine] Environment: Set JAVA_HOME to %s", argv[i]);
-            }
         }
         argv[argc] = NULL;
         

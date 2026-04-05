@@ -27,8 +27,16 @@ class GameLauncher {
         let clientJarURL = versionURL.appendingPathComponent("\(config.versionId).jar")
         
         // 1. Verifica esistenza file critici
-        guard FileManager.default.fileExists(atPath: clientJarURL.path) else {
+        let assetsObjectsURL = gameURL.appendingPathComponent("assets/objects")
+        guard fm.fileExists(atPath: clientJarURL.path) else {
             completion("Errore: JAR di gioco non trovato in \(clientJarURL.lastPathComponent)")
+            return
+        }
+        
+        // Verifica Assets (per evitare schermata nera)
+        var isDir: ObjCBool = false
+        if !fm.fileExists(atPath: assetsObjectsURL.path, isDirectory: &isDir) || !isDir.boolValue {
+            completion("Errore: Assets (900MB) mancanti. Clicca DOWNLOAD prima di giocare.")
             return
         }
         

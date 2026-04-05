@@ -41,6 +41,11 @@ jobs:
           # Verify detection
           ls -R Lapis/Frameworks/
           
+          echo "=== SYMBOL DISCOVERY (Find entry point) ==="
+          # Search for likely entry point symbols in the new frameworks
+          find Lapis/Frameworks -name "libEGL.framework" -exec nm -gU {}/libEGL \; || true
+          find Lapis/Frameworks -name "libGLESv2.framework" -exec nm -gU {}/libGLESv2 \; || true
+          
           echo "=== Done ==="
           # Keep temp_ipa because we need it for the Create IPA step later (to extract runtime)
 

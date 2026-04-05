@@ -130,7 +130,7 @@ class GameDownloader: ObservableObject {
                 }
             }
             
-            // Step 5: Download asset index
+            // Step 5: Download asset index and objects (the 900MB+ part)
             await updateStatus("Downloading assets index...", file: "assets")
             await updateProgress(0.9)
             
@@ -139,11 +139,43 @@ class GameDownloader: ObservableObject {
                let assetId = assetIndex["id"] as? String {
                 
                 let assetsDir = docs.appendingPathComponent("Lapis/assets/indexes")
+                let objectsDir = docs.appendingPathComponent("Lapis/assets/objects")
                 try? fm.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+                try? fm.createDirectory(at: objectsDir, withIntermediateDirectories: true)
                 
-                let assetDest = assetsDir.appendingPathComponent("\(assetId).json")
-                if !fm.fileExists(atPath: assetDest.path) {
-                    try await downloadFile(from: assetURL, to: assetDest)
+                let assetIndexDest = assetsDir.appendingPathComponent("\(assetId).json")
+                if !fm.fileExists(atPath: assetIndexDest.path) {
+                    try await downloadFile(from: assetURL, to: assetIndexDest)
+                }
+                
+                // Parse the index to download all asset objects
+                if let indexData = try? Data(contentsOf: assetIndexDest),
+                   let indexJSON = try? JSONSerialization.jsonObject(with: indexData) as? [String: Any],
+                   let objects = indexJSON["objects"] as? [String: [String: Any]] {
+                    
+                    let totalObjects = objects.count
+                    await updateStatus("Downloading Assets (900MB+)...", file: "Starting...")
+                    
+                    for (index, entry) in objects.enumerated() {
+                        if let hash = entry["hash"] as? String {
+                            let prefix = String(hash.prefix(2))
+                            let objectDestDir = objectsDir.appendingPathComponent(prefix)
+                            let objectDest = objectDestDir.appendingPathComponent(hash)
+                            
+                            if !fm.fileExists(atPath: objectDest.path) {
+                                try? fm.createDirectory(at: objectDestDir, withIntermediateDirectories: true)
+                                let downloadURL = "https://resources.download.minecraft.net/\(prefix)/\(hash)"
+                                try? await downloadFile(from: downloadURL, to: objectDest)
+                            }
+                            
+                            // Update progress periodically to avoid UI lag
+                            if index % 20 == 0 {
+                                let assetProgress = 0.9 + (0.1 * Double(index + 1) / Double(totalObjects))
+                                await updateProgress(assetProgress)
+                                await updateStatus("Downloading Assets...", file: "\(index)/\(totalObjects)")
+                            }
+                        }
+                    }
                 }
             }
             
