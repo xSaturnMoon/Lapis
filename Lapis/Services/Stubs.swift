@@ -30,13 +30,17 @@ class GameLauncher {
 
 // MARK: - Engine Functions Stubs
 func LapisEngine_isJITEnabled() -> Bool {
-    // Basic check for JIT (CS_DEBUGGED or similar)
-    // For the stub, we'll just return true if we're in a debug build or false for release
+    // Basic check for JIT
     #if DEBUG
     return true
     #else
     return false
     #endif
+}
+
+func LapisEngine_isBypassReady() -> Bool {
+    // For the stub, the engine is always "ready" to show the UI in its active state
+    return true
 }
 
 // MARK: - Input Mode Stub (if missing)
