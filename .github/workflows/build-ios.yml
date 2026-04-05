@@ -34,7 +34,7 @@ jobs:
           fi
           rm -rf temp_zip temp_ipa amethyst.zip
           echo "=== Engine Frameworks Ready in Lapis/Frameworks ==="
-          ls -la Lapis/Frameworks/
+          ls -R Lapis/Frameworks/
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml

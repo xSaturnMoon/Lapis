@@ -26,10 +26,18 @@ targets:
       - path: Lapis/Info.plist
       - path: Lapis/Lapis.entitlements
     frameworks:
-      - path: Lapis/Frameworks
-        implicit: true
+      - path: Lapis/Frameworks/LibPojav.framework
+        embed: true
+      - path: Lapis/Frameworks/JRE.framework
+        embed: true
+      - path: Lapis/Frameworks/MetalAngle.framework
+        embed: true
+      - path: Lapis/Frameworks/Dobby.framework
         embed: true
     settings:
+      FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
+      LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
+      OTHER_LDFLAGS: -framework LibPojav -framework JRE -framework MetalAngle -framework Dobby
       base:
         INFOPLIST_FILE: Lapis/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.xsaturnmoon.lapis
