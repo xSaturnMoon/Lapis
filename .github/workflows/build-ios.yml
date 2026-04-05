@@ -27,14 +27,14 @@ jobs:
           unzip -q amethyst.zip -d temp_zip
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
           unzip -q "$IPA_FILE" -d temp_ipa
-          mkdir -p Lapis/Lapis/Frameworks
+          mkdir -p Lapis/Frameworks
           APP_DIR=$(ls temp_ipa/Payload/ | grep ".app" | head -1)
           if [ -d "temp_ipa/Payload/$APP_DIR/Frameworks" ]; then
-            cp -r "temp_ipa/Payload/$APP_DIR/Frameworks"/* Lapis/Lapis/Frameworks/
+            cp -r "temp_ipa/Payload/$APP_DIR/Frameworks"/* Lapis/Frameworks/
           fi
           rm -rf temp_zip temp_ipa amethyst.zip
-          echo "=== Engine Frameworks Ready in Lapis/Lapis/Frameworks ==="
-          ls -la Lapis/Lapis/Frameworks/
+          echo "=== Engine Frameworks Ready in Lapis/Frameworks ==="
+          ls -la Lapis/Frameworks/
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml

@@ -242,16 +242,29 @@ struct HomeView: View {
         .glassBackground()
     }
     
+    private var isVersionReady: Bool {
+        guard let version = appState.selectedVersion else { return false }
+        return downloader.isVersionDownloaded(version.id)
+    }
+    
     private var playButton: some View {
         Button {
-            withAnimation(LapisTheme.Animation.smooth) {
-                showInputMode = true
+            if isVersionReady {
+                withAnimation(LapisTheme.Animation.smooth) {
+                    showInputMode = true
+                }
+            } else {
+                if let version = appState.selectedVersion {
+                    Task {
+                        await downloader.downloadVersion(version.id)
+                    }
+                }
             }
         } label: {
             HStack(spacing: LapisTheme.Spacing.md) {
-                Image(systemName: "play.fill")
+                Image(systemName: isVersionReady ? "play.fill" : "arrow.down.circle.fill")
                     .font(.system(size: 16, weight: .bold))
-                Text("PLAY")
+                Text(isVersionReady ? "PLAY" : "DOWNLOAD")
                     .font(.system(size: 16, weight: .bold))
                     .tracking(2)
             }
@@ -261,10 +274,10 @@ struct HomeView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                         .fill(LinearGradient(
-                            colors: [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark],
+                            colors: isVersionReady ? [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark] : [LapisTheme.Colors.secondary, LapisTheme.Colors.secondaryDark],
                             startPoint: .top, endPoint: .bottom
                         ))
-                    if pulseAnimation {
+                    if pulseAnimation && isVersionReady {
                         RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                             .fill(LapisTheme.Colors.accentGlow)
                             .blur(radius: 12)
@@ -272,7 +285,7 @@ struct HomeView: View {
                     }
                 }
             )
-            .shadow(color: LapisTheme.Colors.accent.opacity(0.3), radius: 16, y: 4)
+            .shadow(color: (isVersionReady ? LapisTheme.Colors.accent : LapisTheme.Colors.secondary).opacity(0.3), radius: 16, y: 4)
         }
         .buttonStyle(.plain)
         .disabled(appState.selectedVersion == nil || !appState.isLoggedIn || isLaunching)
