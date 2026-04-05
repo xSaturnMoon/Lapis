@@ -65,7 +65,9 @@ struct HomeView: View {
             }
         }
         .alert("Launch Error", isPresented: $showLaunchError) {
-            Button("OK") {}
+            Button("OK") {
+                isLaunching = false
+            }
         } message: {
             Text(launchErrorText)
         }
@@ -180,35 +182,35 @@ struct HomeView: View {
                 }
             }
         } label: {
-        HStack(spacing: LapisTheme.Spacing.lg) {
-            ZStack {
-                RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
-                    .fill(LapisTheme.Colors.accent.opacity(0.1))
-                    .frame(width: 56, height: 56)
-                LapisImage(appState.selectedLoader.iconName)
-                    .resizable()
-                    .renderingMode(.template)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(LapisTheme.Colors.accent)
-            }
-            VStack(alignment: .leading, spacing: LapisTheme.Spacing.xs) {
-                HStack(spacing: 4) {
-                    Text("\(appState.selectedLoader.rawValue) \(version.id)")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(LapisTheme.Colors.textPrimary)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(LapisTheme.Colors.textMuted)
+            HStack(spacing: LapisTheme.Spacing.lg) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
+                        .fill(LapisTheme.Colors.accent.opacity(0.1))
+                        .frame(width: 56, height: 56)
+                    LapisImage(appState.selectedLoader.iconName)
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(LapisTheme.Colors.accent)
                 }
-                Text("Installed Version (Tap to change)")
-                    .font(.system(size: 11))
-                    .foregroundColor(LapisTheme.Colors.textSecondary)
+                VStack(alignment: .leading, spacing: LapisTheme.Spacing.xs) {
+                    HStack(spacing: 4) {
+                        Text("\(appState.selectedLoader.rawValue) \(version.id)")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(LapisTheme.Colors.textPrimary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(LapisTheme.Colors.textMuted)
+                    }
+                    Text("Installed Version (Tap to change)")
+                        .font(.system(size: 11))
+                        .foregroundColor(LapisTheme.Colors.textSecondary)
+                }
             }
-        }
-        .padding(LapisTheme.Spacing.xl)
-        .frame(maxWidth: 420)
-        .glassBackground()
+            .padding(LapisTheme.Spacing.xl)
+            .frame(maxWidth: 420)
+            .glassBackground()
         }
     }
     
@@ -310,10 +312,9 @@ struct HomeView: View {
             accessToken: appState.accessToken
         )
         
-        // Launch on background thread to keep UI responsive
-        DispatchQueue.global(qos: .userInitiated).async {
-            let error = GameLauncher.shared.launch(config: config)
-            
+        // Lancio tramite il nuovo sistema asincrono di GameLauncher
+        GameLauncher.shared.launch(config: config) { error in
+            // Questo blocco viene eseguito quando il thread del JVM termina
             DispatchQueue.main.async {
                 withAnimation { isLaunching = false }
                 if let error = error {
