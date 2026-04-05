@@ -27,14 +27,17 @@ jobs:
           unzip -q amethyst.zip -d temp_zip
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
           unzip -q "$IPA_FILE" -d temp_ipa
-          mkdir -p Lapis/Frameworks
+          
+          # Creazione della cartella corretta per il linker
+          mkdir -p Lapis/Lapis/Frameworks
+          
           echo "=== Searching for Frameworks in Downloaded IPA ==="
-          # Search for any .framework folder inside temp_ipa and copy it to Lapis/Frameworks
-          find temp_ipa -name "*.framework" -type d -exec cp -r {} Lapis/Frameworks/ \;
+          # Copia ricorsiva dettagliata
+          find temp_ipa -name "*.framework" -type d -exec cp -rv {} Lapis/Lapis/Frameworks/ \;
           
           echo "=== Frameworks Extraction Results ==="
-          ls -R Lapis/Frameworks/
-          du -sh Lapis/Frameworks/
+          ls -R Lapis/Lapis/Frameworks/
+          du -sh Lapis/Lapis/Frameworks/
           rm -rf temp_zip temp_ipa amethyst.zip
 
       - name: Generate Xcode Project
@@ -64,10 +67,10 @@ jobs:
           
           echo "Found app at: $APP_PATH"
           
-          # ← AGGIUNTO: copia manuale dei framework nell'app
+          # ← CORRETTO: copia manuale dai nuovi percorsi
           echo "=== Manual Embedding Frameworks ==="
           mkdir -p "$APP_PATH/Frameworks"
-          cp -r Lapis/Frameworks/* "$APP_PATH/Frameworks/"
+          cp -rv Lapis/Lapis/Frameworks/* "$APP_PATH/Frameworks/"
           
           # Pseudo-firma tutto con ldid (già installato)
           echo "=== Signing binaries with ldid ==="
