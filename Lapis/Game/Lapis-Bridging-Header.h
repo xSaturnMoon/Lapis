@@ -8,8 +8,8 @@
 #ifndef Lapis_Bridging_Header_h
 #define Lapis_Bridging_Header_h
 
-#import "LapisLauncher.h"
-#import "LapisSurface.h"
+#import "JavaLauncher.h"
+#import "SurfaceViewController.h"
 #import "dyld_bypass.h"
 #import "fishhook.h"
 

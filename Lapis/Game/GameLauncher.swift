@@ -211,13 +211,15 @@ class GameLauncher {
         
         NSLog("[Lapis:GameLauncher] Launching with \(args.count) arguments")
         
-        // 7. Launch
-        DispatchQueue.main.async { LapisSurface_show() }
-        let result = LapisEngine_launchJVM(args)
-        DispatchQueue.main.async { LapisSurface_hide() }
-        
-        if result != 0 {
-            return "Launch failed (code \(result))"
+        // 7. Launch via SurfaceViewController
+        DispatchQueue.main.async {
+            let surface = SurfaceViewController(args: args, username: config.playerName)
+            surface.modalPresentationStyle = .fullScreen
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootVC = windowScene.windows.first?.rootViewController {
+                rootVC.present(surface, animated: true)
+            }
         }
         
         return nil
