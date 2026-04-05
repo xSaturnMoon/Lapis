@@ -26,13 +26,15 @@ targets:
       - path: Lapis/Info.plist
       - path: Lapis/Lapis.entitlements
     frameworks:
-      - path: Lapis/Frameworks/LibPojav.framework
+      - path: Lapis/Frameworks/AltKit.framework
         embed: true
-      - path: Lapis/Frameworks/JRE.framework
+      - path: Lapis/Frameworks/CAltKit.framework
         embed: true
-      - path: Lapis/Frameworks/MetalAngle.framework
+      - path: Lapis/Frameworks/UnzipKit.framework
         embed: true
-      - path: Lapis/Frameworks/Dobby.framework
+      - path: Lapis/Frameworks/libEGL.framework
+        embed: true
+      - path: Lapis/Frameworks/libGLESv2.framework
         embed: true
     settings:
       base:

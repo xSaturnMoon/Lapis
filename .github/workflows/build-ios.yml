@@ -21,28 +21,28 @@ jobs:
       - name: Install tools
         run: brew install xcodegen ldid
 
-      - name: Inspect Amethyst Structure
+      - name: Extract Amethyst Engine
         run: |
-          echo "=== Downloading Amethyst IPA ==="
+          echo "=== Downloading Amethyst Engine ==="
           curl -L -o amethyst.zip "https://nightly.link/AngelAuraMC/Amethyst-iOS/workflows/development/main/org.angelauramc.amethyst-ios.ipa.zip"
           unzip -q amethyst.zip -d temp_zip
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
-          echo "Found IPA: $IPA_FILE"
           unzip -q "$IPA_FILE" -d temp_ipa
           
-          echo "=== FULL DIRECTORY STRUCTURE (Top 100 files) ==="
-          find temp_ipa -maxdepth 5 | head -n 100
-          
-          echo "=== CONTENTS OF .app FOLDER ==="
-          APP_PATH=$(find temp_ipa -name "*.app" -type d | head -1)
-          ls -R "$APP_PATH"
-          
-          echo "=== SEARCHING FOR EXECUTABLE AND NATIVES ==="
-          find "$APP_PATH" -maxdepth 2 -not -path '*/.*'
-          
-          # Don't fail the build yet, just collect info
+          echo "=== Setting up Lapis Frameworks ==="
           mkdir -p Lapis/Frameworks
-          find temp_ipa -name "*.framework" -type d -exec cp -av {} Lapis/Frameworks/ \; || true
+          # Search and copy the new Amethyst frameworks
+          find temp_ipa -name "AltKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          find temp_ipa -name "CAltKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          find temp_ipa -name "UnzipKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          find temp_ipa -name "libEGL.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          find temp_ipa -name "libGLESv2.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          
+          # Verify detection
+          ls -R Lapis/Frameworks/
+          
+          echo "=== Done ==="
+          # Keep temp_ipa because we need it for the Create IPA step later (to extract runtime)
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
@@ -66,24 +66,37 @@ jobs:
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then exit 1; fi
           
-          echo "=== Manual Embedding Frameworks ==="
+          echo "=== 1. Manual Embedding Frameworks ==="
           mkdir -p "$APP_PATH/Frameworks"
-          cp -rv "$GITHUB_WORKSPACE/Lapis/Frameworks/"* "$APP_PATH/Frameworks/"
+          # Copiamo solo il contenuto dei framework, evitando directory di firma vecchie se possibile
+          find Lapis/Frameworks -name "*.framework" -type d -exec cp -av {} "$APP_PATH/Frameworks/" \;
           
-          echo "=== Signing with ldid ==="
-          ldid -S "$APP_PATH/Lapis"
-          # NOTA: usiamo find per gestire sia .framework che eventuali .dylib
-          find "$APP_PATH/Frameworks" -type f \( -perm -u=x -o -name "*.dylib" \) -exec ldid -S {} +
+          echo "=== 2. Searching and Injecting JRE/Runtime from Amethyst ==="
+          # Amethyst spesso mette la JRE in 'runtime' o 'java_runtimes'
+          AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
+          if [ -d "$AMETHYST_APP/runtime" ]; then
+            cp -av "$AMETHYST_APP/runtime" "$APP_PATH/"
+            echo "Injected 'runtime' folder"
+          fi
+          if [ -d "$AMETHYST_APP/java_runtimes" ]; then
+            cp -av "$AMETHYST_APP/java_runtimes" "$APP_PATH/"
+            echo "Injected 'java_runtimes' folder"
+          fi
           
-          echo "=== Packaging IPA ==="
+          echo "=== 3. Ad-hoc Signing with codesign (more robust than ldid) ==="
+          # Firmiamo prima i framework
+          find "$APP_PATH/Frameworks" -name "*.framework" -type d -exec codesign --force --deep --sign - {} \;
+          # Poi il binario principale
+          codesign --force --deep --sign - "$APP_PATH/Lapis"
+          
+          echo "=== 4. Packaging IPA ==="
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload
           rm -rf Payload
           
-          echo "=== Final IPA Status ==="
+          echo "=== Final Status ==="
           ls -lh Lapis.ipa
-          unzip -l Lapis.ipa | grep Frameworks | head -10
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
