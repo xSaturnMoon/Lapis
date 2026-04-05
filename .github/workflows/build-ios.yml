@@ -21,44 +21,6 @@ jobs:
       - name: Install tools
         run: brew install xcodegen ldid
 
-      - name: Download JRE17 for iOS
-        run: |
-          echo "=== Downloading OpenJDK 17 JRE for iOS ARM64 ==="
-          curl -L -o jre17.tar.xz \
-            "https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre17-ca01427/jre17-arm64-20220817-release.tar.xz"
-          
-          echo "Download complete. Size:"
-          ls -la jre17.tar.xz
-          
-          echo "=== Extracting JRE ==="
-          mkdir -p jre-bundle
-          tar xf jre17.tar.xz -C jre-bundle/
-          
-          echo "=== JRE contents ==="
-          ls -la jre-bundle/
-          find jre-bundle -maxdepth 3 -type f | head -30
-          
-          rm -f jre17.tar.xz
-          echo "=== JRE ready ==="
-
-      - name: Download PojavLauncher Frameworks
-        run: |
-          echo "=== Downloading pre-built frameworks from PojavLauncher ==="
-          
-          # Clone only the Frameworks directory from PojavLauncher
-          git clone --depth 1 --filter=blob:none --sparse \
-            https://github.com/PojavLauncherTeam/PojavLauncher_iOS.git pojav-src
-          cd pojav-src
-          git sparse-checkout set Frameworks libs libs_caciocavallo17
-          cd ..
-          
-          echo "=== Frameworks ==="
-          ls -la pojav-src/Frameworks/ 2>/dev/null || echo "No Frameworks dir"
-          ls -la pojav-src/libs/ 2>/dev/null || echo "No libs dir"
-          ls -la pojav-src/libs_caciocavallo17/ 2>/dev/null || echo "No caciocavallo dir"
-          
-          echo "=== Done ==="
-
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
 
@@ -85,45 +47,6 @@ jobs:
           fi
           
           echo "Found app at: $APP_PATH"
-          
-          # Bundle JRE into the app
-          if [ -d "jre-bundle" ]; then
-            echo "Bundling JRE into app..."
-            cp -r jre-bundle "$APP_PATH/jre"
-            echo "JRE bundled!"
-          fi
-          
-          # Bundle PojavLauncher frameworks (GL4ES, MetalANGLE, LWJGL, etc.)
-          if [ -d "pojav-src/Frameworks" ]; then
-            echo "Bundling frameworks..."
-            mkdir -p "$APP_PATH/Frameworks"
-            cp -r pojav-src/Frameworks/* "$APP_PATH/Frameworks/" 2>/dev/null || true
-            echo "Frameworks bundled!"
-            ls -la "$APP_PATH/Frameworks/" | head -20
-          fi
-          
-          # Bundle Java libraries (PojavLauncher wrapper, Caciocavallo, etc.)
-          if [ -d "pojav-src/libs" ]; then
-            echo "Bundling Java libs..."
-            mkdir -p "$APP_PATH/libs"
-            cp -r pojav-src/libs/* "$APP_PATH/libs/" 2>/dev/null || true
-            echo "Java libs bundled!"
-          fi
-          
-          if [ -d "pojav-src/libs_caciocavallo17" ]; then
-            echo "Bundling Caciocavallo..."
-            mkdir -p "$APP_PATH/libs_caciocavallo17"
-            cp -r pojav-src/libs_caciocavallo17/* "$APP_PATH/libs_caciocavallo17/" 2>/dev/null || true
-            echo "Caciocavallo bundled!"
-          fi
-          
-          # Sign ALL dylibs in the app (JRE + Frameworks)
-          echo "Signing all binaries..."
-          find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" -o -path "*/bin/*" \) \
-            -exec ldid -S {} \; 2>/dev/null || true
-          
-          # Sign the main app executable with JIT entitlements
-          ldid -SLapis/Lapis.entitlements "$APP_PATH/Lapis"
           
           # Create IPA
           mkdir -p Payload
