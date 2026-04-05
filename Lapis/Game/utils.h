@@ -3,7 +3,7 @@
 #import <UIKit/UIKit.h>
 
 #include <stdbool.h>
-
+#include "environ.h"
 
 // Remove date + time from NSLog, unneeded
 #define NSLog(args...) customNSLog(__FILE__,__LINE__,__PRETTY_FUNCTION__,args);
