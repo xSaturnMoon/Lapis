@@ -63,14 +63,28 @@ jobs:
           
           echo "Found app at: $APP_PATH"
           
-          # Create IPA
+          # ← AGGIUNTO: copia manuale dei framework nell'app
+          echo "=== Manual Embedding Frameworks ==="
+          mkdir -p "$APP_PATH/Frameworks"
+          cp -r Lapis/Frameworks/* "$APP_PATH/Frameworks/"
+          
+          # Pseudo-firma tutto con ldid (già installato)
+          echo "=== Signing binaries with ldid ==="
+          ldid -S "$APP_PATH/Lapis"
+          
+          # Trova tutti i binari nei framework e sventrali (firma ldid)
+          # NOTA: usiamo find per gestire sia .framework che eventuali .dylib
+          find "$APP_PATH/Frameworks" -type f \( -perm -u=x -o -name "*.dylib" \) -exec ldid -S {} +
+          
+          echo "=== Packaging IPA ==="
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload
           rm -rf Payload
           
-          echo "=== IPA created ==="
-          ls -la Lapis.ipa
+          echo "=== Final IPA Status ==="
+          ls -lh Lapis.ipa
+          unzip -l Lapis.ipa | grep Frameworks | head -10
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4

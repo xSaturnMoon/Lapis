@@ -35,9 +35,6 @@ targets:
       - path: Lapis/Frameworks/Dobby.framework
         embed: true
     settings:
-      FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
-      LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
-      OTHER_LDFLAGS: -framework LibPojav -framework JRE -framework MetalAngle -framework Dobby
       base:
         INFOPLIST_FILE: Lapis/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.xsaturnmoon.lapis
@@ -48,6 +45,8 @@ targets:
         USER_HEADER_SEARCH_PATHS: Lapis/Game
         CLANG_ENABLE_MODULES: "YES"
         ENABLE_BITCODE: "NO"
+        FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
+        LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
         OTHER_LDFLAGS:
           - "-ldl"
           - "-lpthread"
@@ -55,6 +54,14 @@ targets:
           - "UIKit"
           - "-framework"
           - "Foundation"
+          - "-framework"
+          - "LibPojav"
+          - "-framework"
+          - "JRE"
+          - "-framework"
+          - "MetalAngle"
+          - "-framework"
+          - "Dobby"
         OTHER_CFLAGS:
           - "-Wno-unused-function"
           - "-Wno-unused-variable"
