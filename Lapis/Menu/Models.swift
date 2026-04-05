@@ -22,6 +22,9 @@ class AppState: ObservableObject {
     @Published var totalPlayTimeMinutes: Int = 0 {
         didSet { UserDefaults.standard.set(totalPlayTimeMinutes, forKey: "lapis_play_time") }
     }
+    @Published var memoryAllocation: Int = 2048 {
+        didSet { UserDefaults.standard.set(memoryAllocation, forKey: "lapis_memory") }
+    }
     
     init() {
         // Restore saved account
@@ -31,6 +34,9 @@ class AppState: ObservableObject {
         playerUUID = defaults.string(forKey: "lapis_player_uuid") ?? ""
         accessToken = defaults.string(forKey: "lapis_access_token") ?? ""
         totalPlayTimeMinutes = defaults.integer(forKey: "lapis_play_time")
+        
+        let savedMemory = defaults.integer(forKey: "lapis_memory")
+        memoryAllocation = savedMemory > 0 ? savedMemory : 2048
     }
     
     /// Load installed versions from disk on startup

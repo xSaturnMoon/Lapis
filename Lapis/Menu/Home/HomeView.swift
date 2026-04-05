@@ -319,7 +319,8 @@ struct HomeView: View {
             inputMode: mode,
             playerName: appState.playerName,
             playerUUID: appState.playerUUID,
-            accessToken: appState.accessToken
+            accessToken: appState.accessToken,
+            memoryAllocation: appState.memoryAllocation
         )
         
         // Lancio tramite il nuovo sistema asincrono di GameLauncher
