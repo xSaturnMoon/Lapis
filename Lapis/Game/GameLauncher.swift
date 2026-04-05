@@ -93,10 +93,19 @@ class GameLauncher {
     }
     
     private func getGameDirectory() -> URL {
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("minecraft")
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Lapis")
     }
     
     private func getJREDirectory() -> URL {
-        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("runtime/jre17-arm64")
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let docsJRE = docs.appendingPathComponent("Lapis/jre")
+        
+        if fm.fileExists(atPath: docsJRE.path) {
+            return docsJRE
+        }
+        
+        // Fallback to bundle JRE if exists
+        return Bundle.main.bundleURL.appendingPathComponent("jre")
     }
 }
