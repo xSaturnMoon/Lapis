@@ -255,6 +255,7 @@ struct HomeView: View {
                 }
             } else {
                 if let version = appState.selectedVersion {
+                    withAnimation { showDownloadProgress = true }
                     Task {
                         await downloader.downloadVersion(version.id)
                     }
