@@ -13,7 +13,7 @@ void appendLogToLaunchFile(NSString *message) {
     [[NSFileManager defaultManager] createDirectoryAtPath:[logPath stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
     
     NSString *timestamp = [NSDateFormatter localizedStringFromDate:[NSDate date] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterLongStyle];
-    NSString *fullMessage = [NSString NS_FORMAT:@"[%@] %@\n", timestamp, message];
+    NSString *fullMessage = [NSString stringWithFormat:@"[%@] %@\n", timestamp, message];
     
     NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:logPath];
     if (handle) {
@@ -38,9 +38,9 @@ void appendLogToLaunchFile(NSString *message) {
             NSString *fullPath = [frameworkPath stringByAppendingPathComponent:fw];
             void *fwHandle = dlopen([fullPath UTF8String], RTLD_NOW | RTLD_GLOBAL);
             if (fwHandle) {
-                appendLogToLaunchFile([NSString NS_FORMAT:@"Successfully pre-loaded: %@", fw]);
+                appendLogToLaunchFile([NSString stringWithFormat:@"Successfully pre-loaded: %@", fw]);
             } else {
-                appendLogToLaunchFile([NSString NS_FORMAT:@"Warning: Could not pre-load %@: %s", fw, dlerror()]);
+                appendLogToLaunchFile([NSString stringWithFormat:@"Warning: Could not pre-load %@: %s", fw, dlerror()]);
             }
         }
 
@@ -52,13 +52,13 @@ void appendLogToLaunchFile(NSString *message) {
         for (NSString *symName in symbolNames) {
             func = (JavaLauncherMainFunc)dlsym(handle, [symName UTF8String]);
             if (func) {
-                appendLogToLaunchFile([NSString NS_FORMAT:@"Found entry point: %@", symName]);
+                appendLogToLaunchFile([NSString stringWithFormat:@"Found entry point: %@", symName]);
                 break;
             }
         }
         
         if (!func) {
-            appendLogToLaunchFile([NSString NS_FORMAT:@"FATAL: All entry points failed. Last error: %s", dlerror()]);
+            appendLogToLaunchFile([NSString stringWithFormat:@"FATAL: All entry points failed. Last error: %s", dlerror()]);
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(-2);
             });
@@ -72,7 +72,7 @@ void appendLogToLaunchFile(NSString *message) {
             jrePath = [bundlePath stringByAppendingPathComponent:@"java_runtimes"];
         }
         setenv("JAVA_HOME", [jrePath UTF8String], 1);
-        appendLogToLaunchFile([NSString NS_FORMAT:@"JAVA_HOME set to: %@", jrePath]);
+        appendLogToLaunchFile([NSString stringWithFormat:@"JAVA_HOME set to: %@", jrePath]);
         
         int argc = (int)args.count;
         char **argv = malloc(sizeof(char *) * (argc + 1));
@@ -86,7 +86,7 @@ void appendLogToLaunchFile(NSString *message) {
         
         appendLogToLaunchFile(@"REACHING POINT OF NO RETURN: Calling engine main...");
         int result = func(argc, argv);
-        appendLogToLaunchFile([NSString NS_FORMAT:@"Engine terminated with Code: %d", result]);
+        appendLogToLaunchFile([NSString stringWithFormat:@"Engine terminated with Code: %d", result]);
         
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
