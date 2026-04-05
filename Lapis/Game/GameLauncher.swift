@@ -27,6 +27,7 @@ class GameLauncher {
         let clientJarURL = versionURL.appendingPathComponent("\(config.versionId).jar")
         
         // 1. Verifica esistenza file critici
+        let fm = FileManager.default
         let assetsObjectsURL = gameURL.appendingPathComponent("assets/objects")
         guard fm.fileExists(atPath: clientJarURL.path) else {
             completion("Errore: JAR di gioco non trovato in \(clientJarURL.lastPathComponent)")

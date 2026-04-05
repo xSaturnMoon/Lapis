@@ -153,11 +153,12 @@ class GameDownloader: ObservableObject {
                    let indexJSON = try? JSONSerialization.jsonObject(with: indexData) as? [String: Any],
                    let objects = indexJSON["objects"] as? [String: [String: Any]] {
                     
-                    let totalObjects = objects.count
+                    let objectValues = Array(objects.values)
+                    let totalObjects = objectValues.count
                     await updateStatus("Downloading Assets (900MB+)...", file: "Starting...")
                     
-                    for (index, entry) in objects.enumerated() {
-                        if let hash = entry["hash"] as? String {
+                    for (index, hashData) in objectValues.enumerated() {
+                        if let hash = hashData["hash"] as? String {
                             let prefix = String(hash.prefix(2))
                             let objectDestDir = objectsDir.appendingPathComponent(prefix)
                             let objectDest = objectDestDir.appendingPathComponent(hash)
@@ -169,7 +170,7 @@ class GameDownloader: ObservableObject {
                             }
                             
                             // Update progress periodically to avoid UI lag
-                            if index % 20 == 0 {
+                            if index % 50 == 0 {
                                 let assetProgress = 0.9 + (0.1 * Double(index + 1) / Double(totalObjects))
                                 await updateProgress(assetProgress)
                                 await updateStatus("Downloading Assets...", file: "\(index)/\(totalObjects)")
