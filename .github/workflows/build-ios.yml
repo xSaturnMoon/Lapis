@@ -70,34 +70,24 @@ jobs:
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then exit 1; fi
           
-          echo "=== 1. Manual Embedding Frameworks ==="
-          mkdir -p "$APP_PATH/Frameworks"
-          # Copiamo solo il contenuto dei framework, evitando directory di firma vecchie se possibile
-          find Lapis/Frameworks -name "*.framework" -type d -exec cp -av {} "$APP_PATH/Frameworks/" \;
           
-          echo "=== 2. Searching and Injecting JRE/Runtime from Amethyst ==="
-          # Amethyst spesso mette la JRE in 'runtime' o 'java_runtimes'
-          AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
-          if [ -d "$AMETHYST_APP/runtime" ]; then
-            cp -av "$AMETHYST_APP/runtime" "$APP_PATH/"
-            echo "Injected 'runtime' folder"
-          fi
-          if [ -d "$AMETHYST_APP/java_runtimes" ]; then
-            cp -av "$AMETHYST_APP/java_runtimes" "$APP_PATH/"
-            echo "Injected 'java_runtimes' folder"
-          fi
+          echo "=== Injecting Total Amethyst Engine ==="
+          cp -rf Lapis/Frameworks/* "$APP_PATH/Frameworks/" || true
+          cp -rf temp_ipa/Payload/*.app/runtime "$APP_PATH/" || true
+          cp -rf temp_ipa/Payload/*.app/java_runtimes "$APP_PATH/" || true
           
-          echo "=== 3. Ad-hoc Signing with codesign (more robust than ldid) ==="
-          # Firmiamo prima i framework
-          find "$APP_PATH/Frameworks" -name "*.framework" -type d -exec codesign --force --deep --sign - {} \;
-          # Poi il binario principale
-          codesign --force --deep --sign - "$APP_PATH/Lapis"
+          echo "=== Deep Signing Engine Components ==="
+          # Sign all frameworks and dylibs recursively
+          find "$APP_PATH/Frameworks" -name "*.framework" -exec codesign --force --deep --sign - {} \;
+          find "$APP_PATH/Frameworks" -name "*.dylib" -exec codesign --force --sign - {} \;
           
-          echo "=== 4. Packaging IPA ==="
+          # Sign the main app bundle
+          codesign --force --deep --sign - "$APP_PATH"
+          
+          # Pack into IPA
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload
-          rm -rf Payload
           
           echo "=== Final Status ==="
           ls -lh Lapis.ipa
@@ -105,6 +95,6 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Lapis-IPA
+          name: Lapis-iPadOS26-Final
           path: Lapis.ipa
           retention-days: 30

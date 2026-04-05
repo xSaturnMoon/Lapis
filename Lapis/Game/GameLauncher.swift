@@ -45,12 +45,13 @@ class GameLauncher {
         let librariesURL = gameURL.appendingPathComponent("libraries")
         let classpath = buildClasspath(librariesURL: librariesURL, clientJarURL: clientJarURL)
         
-        // 3. Prepara gli argomenti di lancio per l'engine Pojav
+        // 3. Prepara gli argomenti di lancio per l'engine Amethyst
+        let frameworkPath = Bundle.main.bundleURL.appendingPathComponent("Frameworks").path
         var args: [String] = [
             "java",
             "-Xmx\(config.memoryAllocation)M",
             "-Djava.home=\(jreURL.path)",
-            "-Djava.library.path=\(versionURL.appendingPathComponent("natives").path)",
+            "-Djava.library.path=\(frameworkPath):\(versionURL.appendingPathComponent("natives").path)",
             "-Dapple.laf.useScreenMenuBar=true",
             "-cp", classpath,
             "net.minecraft.client.main.Main"
