@@ -160,23 +160,30 @@ class GameDownloader: ObservableObject {
                     let totalObjects = objectValues.count
                     await updateStatus("Downloading Assets (900MB+)...", file: "Starting...")
                     
-                    for (index, hashData) in objectValues.enumerated() {
-                        if let hash = hashData["hash"] as? String {
-                            let prefix = String(hash.prefix(2))
-                            let objectDestDir = objectsDir.appendingPathComponent(prefix)
-                            let objectDest = objectDestDir.appendingPathComponent(hash)
-                            
-                            if !fm.fileExists(atPath: objectDest.path) {
-                                try? fm.createDirectory(at: objectDestDir, withIntermediateDirectories: true)
-                                let downloadURL = "https://resources.download.minecraft.net/\(prefix)/\(hash)"
-                                try? await downloadFile(from: downloadURL, to: objectDest)
+                    // Paralell download using TaskGroup for speed
+                    await withTaskGroup(of: Void.self) { group in
+                        for (index, hashData) in objectValues.enumerated() {
+                            if let hash = hashData["hash"] as? String {
+                                group.addTask {
+                                    let prefix = String(hash.prefix(2))
+                                    let objectDestDir = objectsDir.appendingPathComponent(prefix)
+                                    let objectDest = objectDestDir.appendingPathComponent(hash)
+                                    
+                                    if !FileManager.default.fileExists(atPath: objectDest.path) {
+                                        try? FileManager.default.createDirectory(at: objectDestDir, withIntermediateDirectories: true)
+                                        let downloadURL = "https://resources.download.minecraft.net/\(prefix)/\(hash)"
+                                        try? await self.downloadFile(from: downloadURL, to: objectDest)
+                                    }
+                                }
                             }
                             
-                            // Update progress periodically to avoid UI lag
+                            // Progress update (approximate as it is async)
                             if index % 50 == 0 {
                                 let assetProgress = 0.9 + (0.1 * Double(index + 1) / Double(totalObjects))
-                                await updateProgress(assetProgress)
-                                await updateStatus("Downloading Assets...", file: "\(index)/\(totalObjects)")
+                                Task { @MainActor in
+                                    self.progress = assetProgress
+                                    self.statusMessage = "Downloading Assets... (\(index)/\(totalObjects))"
+                                }
                             }
                         }
                     }
