@@ -72,9 +72,12 @@ jobs:
           
           
           echo "=== Injecting Total Amethyst Engine ==="
+          mkdir -p "$APP_PATH/Frameworks"
           cp -rf Lapis/Frameworks/* "$APP_PATH/Frameworks/" || true
-          cp -rf temp_ipa/Payload/*.app/runtime "$APP_PATH/" || true
-          cp -rf temp_ipa/Payload/*.app/java_runtimes "$APP_PATH/" || true
+          
+          AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
+          if [ -d "$AMETHYST_APP/runtime" ]; then cp -rf "$AMETHYST_APP/runtime" "$APP_PATH/"; fi
+          if [ -d "$AMETHYST_APP/java_runtimes" ]; then cp -rf "$AMETHYST_APP/java_runtimes" "$APP_PATH/"; fi
           
           echo "=== Deep Signing Engine Components ==="
           # Sign all frameworks and dylibs recursively
