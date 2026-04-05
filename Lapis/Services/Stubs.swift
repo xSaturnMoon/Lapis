@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Darwin
 
 // MARK: - Game Launcher Stub
 class GameLauncher {
@@ -30,12 +31,26 @@ class GameLauncher {
 
 // MARK: - Engine Functions Stubs
 func LapisEngine_isJITEnabled() -> Bool {
-    // Basic check for JIT
-    #if DEBUG
-    return true
-    #else
+    // Try to map a page with MAP_JIT to see if we have the JIT entitlement
+    let size = Int(getpagesize())
+    let address = mmap(nil, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0)
+    
+    if address != MAP_FAILED {
+        munmap(address, size)
+        return true
+    }
+    
+    // Fallback: check if we are being debugged (which also enables JIT usually)
+    var info = kinfo_proc()
+    var info_size = MemoryLayout<kinfo_proc>.size
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+    
+    if sysctl(&mib, 4, &info, &info_size, nil, 0) == 0 {
+        // P_TRACED is 0x00000800
+        return (info.kp_proc.p_flag & 0x00000800) != 0
+    }
+    
     return false
-    #endif
 }
 
 func LapisEngine_isBypassReady() -> Bool {
