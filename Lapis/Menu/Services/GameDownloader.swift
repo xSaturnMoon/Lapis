@@ -27,8 +27,11 @@ class GameDownloader: ObservableObject {
         let versionDir = docs.appendingPathComponent("Lapis/versions/\(versionId)")
         let clientJar = versionDir.appendingPathComponent("\(versionId).jar")
         let metadataJson = versionDir.appendingPathComponent("\(versionId).json")
+        let assetsObjectsDir = docs.appendingPathComponent("Lapis/assets/objects")
         
-        return fm.fileExists(atPath: clientJar.path) && fm.fileExists(atPath: metadataJson.path)
+        return fm.fileExists(atPath: clientJar.path) && 
+               fm.fileExists(atPath: metadataJson.path) &&
+               fm.fileExists(atPath: assetsObjectsDir.path)
     }
     
     /// Download all game files for a specific version
