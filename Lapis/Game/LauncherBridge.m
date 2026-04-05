@@ -36,7 +36,7 @@ typedef int (*JavaLauncherMainFunc)(int argc, char **argv);
         for (int i = 0; i < argc; i++) free(argv[i]);
         free(argv);
         
-        dispatch_async(dispatch_get_main_addr(), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(result);
         });
     });
