@@ -44,5 +44,6 @@ targets:
         HEADER_SEARCH_PATHS:
           - "$(SRCROOT)/Lapis/Game/Engine/external"
           - "$(SRCROOT)/Lapis/Game/Engine/external/ANGLE"
+          - "$(SRCROOT)/Lapis/Game/Engine/external/mesa"
     entitlements:
       path: Lapis/Lapis.entitlements
