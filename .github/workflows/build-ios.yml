@@ -28,16 +28,15 @@ jobs:
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
           unzip -q "$IPA_FILE" -d temp_ipa
           
-          # Creazione della cartella corretta per il linker
-          mkdir -p Lapis/Lapis/Frameworks
+          # Definiamo la cartella dei framework in modo assoluto
+          FW_DIR="$GITHUB_WORKSPACE/Lapis/Frameworks"
+          mkdir -p "$FW_DIR"
           
-          echo "=== Searching for Frameworks in Downloaded IPA ==="
-          # Copia ricorsiva dettagliata
-          find temp_ipa -name "*.framework" -type d -exec cp -rv {} Lapis/Lapis/Frameworks/ \;
+          echo "=== Extracting Frameworks to $FW_DIR ==="
+          find temp_ipa -name "*.framework" -type d -exec cp -rv {} "$FW_DIR/" \;
           
-          echo "=== Frameworks Extraction Results ==="
-          ls -R Lapis/Lapis/Frameworks/
-          du -sh Lapis/Lapis/Frameworks/
+          echo "=== Verification ==="
+          ls -R "$FW_DIR"
           rm -rf temp_zip temp_ipa amethyst.zip
 
       - name: Generate Xcode Project
@@ -45,6 +44,9 @@ jobs:
 
       - name: Build
         run: |
+          echo "Verifying Frameworks Path..."
+          ls -d "$GITHUB_WORKSPACE/Lapis/Frameworks/LibPojav.framework" || (echo "ERROR: NOT FOUND!" && exit 1)
+          
           xcodebuild clean build \
             -project Lapis.xcodeproj \
             -scheme Lapis \
@@ -59,24 +61,14 @@ jobs:
       - name: Create IPA
         run: |
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then exit 1; fi
           
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: Lapis.app not found"
-            exit 1
-          fi
-          
-          echo "Found app at: $APP_PATH"
-          
-          # ← CORRETTO: copia manuale dai nuovi percorsi
           echo "=== Manual Embedding Frameworks ==="
           mkdir -p "$APP_PATH/Frameworks"
-          cp -rv Lapis/Lapis/Frameworks/* "$APP_PATH/Frameworks/"
+          cp -rv "$GITHUB_WORKSPACE/Lapis/Frameworks/"* "$APP_PATH/Frameworks/"
           
-          # Pseudo-firma tutto con ldid (già installato)
-          echo "=== Signing binaries with ldid ==="
+          echo "=== Signing with ldid ==="
           ldid -S "$APP_PATH/Lapis"
-          
-          # Trova tutti i binari nei framework e sventrali (firma ldid)
           # NOTA: usiamo find per gestire sia .framework che eventuali .dylib
           find "$APP_PATH/Frameworks" -type f \( -perm -u=x -o -name "*.dylib" \) -exec ldid -S {} +
           
