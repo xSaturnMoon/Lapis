@@ -140,21 +140,15 @@ static void appendLog(NSString *message) {
         NSString *mainClass = @"net.minecraft.client.main.Main";
         BOOL foundMain = NO;
 
-        for (NSUInteger i = 1; i < args.count; i++) {
-            NSString *arg = args[i];
-            if (foundMain) { [mcArgs addObject:arg]; continue; }
-            if ([arg isEqualToString:@"-cp"] || [arg isEqualToString:@"-classpath"]) {
-                if (i + 1 < args.count) {
-                    i++;
-                    NSString *cpPath = args[i];
-                    [jvmOpts addObject:[NSString stringWithFormat:@"-Djava.class.path=%@", cpPath]];
-                }
-            } else if ([arg hasPrefix:@"-"]) {
-                [jvmOpts addObject:arg];
-            } else {
-                mainClass = arg; foundMain = YES;
-            }
-        }
+        // DIAGNOSTICA: Test minimo senza Classpath lungo per isolare il problema
+        [jvmOpts addObject:@"-Xint"];
+        [jvmOpts addObject:@"-Xms32M"];
+        [jvmOpts addObject:@"-Xmx128M"];
+        appendLog(@"[CRITICAL DIAGNOSTIC] Test avvio MINIMO (No Classpath)...");
+        
+        /* 
+        Il classpath originale di 50KB viene saltato per questo test
+        */
 
         // DIAGNOSTICA: Forza modalità interpretata IN CIMA alla lista
         [jvmOpts insertObject:@"-Xint" atIndex:0]; 
