@@ -46,9 +46,6 @@ struct HomeView: View {
                     }
             }
 
-            // Overlay "Launching Minecraft..." mostrato solo mentre isLaunching è true.
-            // Viene resettato da onGameEnd (callback da GameViewController) quando il gioco
-            // termina oppure crasha — PRIMA questo non succedeva mai, overlay bloccato.
             if isLaunching {
                 ZStack {
                     LapisTheme.Colors.background.opacity(0.9)
@@ -68,12 +65,17 @@ struct HomeView: View {
                 .transition(.opacity)
             }
         }
+        // Alert mostrato DOPO che fullScreenCover è completamente chiuso.
+        // onGameEnd viene chiamato dal completionHandler di dismiss() in GameViewController,
+        // quindi qui HomeView è già tornata visibile e l'alert non viene più scartato.
         .alert("Launch Error", isPresented: $showLaunchError) {
-            Button("OK") {
-                isLaunching = false
+            Button("OK") { isLaunching = false }
+            Button("Copia log path") {
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                UIPasteboard.general.string = docs.appendingPathComponent("Lapis/launch.log").path
             }
         } message: {
-            Text(launchErrorText)
+            Text(launchErrorText + "\n\nLog: Files app → Lapis → launch.log")
         }
     }
 
@@ -175,9 +177,6 @@ struct HomeView: View {
                 GameViewContainer(
                     inputMode: config.inputMode,
                     config: config,
-                    // onGameEnd: chiamato da GameViewController quando il gioco termina.
-                    // Resetta isLaunching e mostra errore se presente.
-                    // PRIMA questo closure non esisteva → isLaunching mai resettato → UI bloccata.
                     onGameEnd: { error in
                         withAnimation { isLaunching = false }
                         if let error = error {
@@ -325,22 +324,17 @@ struct HomeView: View {
     // MARK: - Game Flow
     private func startGameFlow(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
-
         if downloader.isVersionDownloaded(version.id) {
             doLaunch(mode: mode)
         } else {
             withAnimation { showDownloadProgress = true }
-            Task {
-                await downloader.downloadVersion(version.id)
-            }
+            Task { await downloader.downloadVersion(version.id) }
         }
     }
 
     private func doLaunch(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
-
         lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
-
         pendingConfig = GameLauncher.LaunchConfig(
             versionId: version.id,
             loader: appState.selectedLoader,
@@ -350,13 +344,9 @@ struct HomeView: View {
             accessToken: appState.accessToken,
             memoryAllocation: appState.memoryAllocation
         )
-
         withAnimation {
             isLaunching = true
             showGameView = true
         }
-        // Il lancio reale parte da GameViewController.launchMinecraft().
-        // Quando finisce (successo o errore), onGameEnd resetta isLaunching e
-        // mostra l'alert con il messaggio di errore preciso.
     }
 }

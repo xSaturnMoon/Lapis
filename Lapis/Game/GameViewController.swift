@@ -1,16 +1,11 @@
 import UIKit
 import SwiftUI
 
-/**
- * GameViewController: Il "contenitore" grafico ufficiale di Minecraft.
- * Riceve un LaunchConfig, lancia il gioco tramite GameLauncher,
- * e notifica HomeView al termine tramite onGameEnd.
- */
 class GameViewController: UIViewController {
 
     let inputMode: InputMode
     let config: GameLauncher.LaunchConfig
-    var onGameEnd: ((String?) -> Void)?   // callback verso HomeView per resettare stato
+    var onGameEnd: ((String?) -> Void)?
 
     init(inputMode: InputMode, config: GameLauncher.LaunchConfig, onGameEnd: ((String?) -> Void)? = nil) {
         self.inputMode = inputMode
@@ -30,15 +25,11 @@ class GameViewController: UIViewController {
 
     private func setupInputMode() {
         if inputMode == .keyboard {
-            requestPointerLock()
+            if #available(iOS 14.0, *) {
+                self.setNeedsUpdateOfPrefersPointerLocked()
+            }
         } else {
             print("[GameView] Caricamento tasti virtuali...")
-        }
-    }
-
-    private func requestPointerLock() {
-        if #available(iOS 14.0, *) {
-            self.setNeedsUpdateOfPrefersPointerLocked()
         }
     }
 
@@ -47,17 +38,21 @@ class GameViewController: UIViewController {
     }
 
     private func launchMinecraft() {
-        NSLog("[GameView] Avvio tramite GameLauncher per versione: \(config.versionId)")
+        NSLog("[GameView] Avvio GameLauncher per versione: \(config.versionId)")
 
         GameLauncher.shared.launch(config: config) { [weak self] error in
             guard let self = self else { return }
             DispatchQueue.main.async {
-                // Prima di chiudere la view, notifica HomeView.
-                // HomeView usa questo per: resettare isLaunching, mostrare errore.
-                // PRIMA questo callback non esisteva: HomeView settava isLaunching=true
-                // e non lo resettava mai → overlay "Launching Minecraft..." bloccato in eterno.
-                self.onGameEnd?(error)
-                self.dismiss(animated: true)
+                // Prima chiudi la schermata nera, poi (dopo la fine dell'animazione)
+                // notifica HomeView. Se onGameEnd fosse chiamato prima del dismiss,
+                // SwiftUI scarta l'alert perché il fullScreenCover è ancora in dismissing.
+                self.dismiss(animated: true) {
+                    // Questo blocco viene eseguito DOPO che l'animazione di dismiss è completata.
+                    // A questo punto HomeView è tornata visibile e può presentare l'alert.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        self.onGameEnd?(error)
+                    }
+                }
             }
         }
     }
