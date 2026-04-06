@@ -26,12 +26,14 @@ targets:
       - path: Lapis/Info.plist
       - path: Lapis/Lapis.entitlements
     frameworks:
+      # ── AltJIT / UI ──────────────────────────────
       - path: Lapis/Frameworks/AltKit.framework
         embed: true
       - path: Lapis/Frameworks/CAltKit.framework
         embed: true
       - path: Lapis/Frameworks/UnzipKit.framework
         embed: true
+      # ── OpenGL ES / EGL ──────────────────────────
       - path: Lapis/Frameworks/libEGL.framework
         embed: true
       - path: Lapis/Frameworks/libGLESv2.framework
@@ -49,6 +51,20 @@ targets:
         ENABLE_BITCODE: "NO"
         FRAMEWORK_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
         LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/Lapis/Frameworks
+
+        # ── CRITICO: rpath ──────────────────────────────────────────────
+        # Senza questi dyld non trova i .dylib a runtime e JNI_CreateJavaVM
+        # crasha silenziosamente (nessun log, SIGBUS istantaneo).
+        # Servono tutti e tre i livelli: Frameworks, lib/, lib/server/
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/Frameworks"
+          - "@executable_path/java_runtimes/java-17-openjdk/lib"
+          - "@executable_path/java_runtimes/java-17-openjdk/lib/server"
+          - "@executable_path/java_runtimes/java-8-openjdk/lib"
+          - "@executable_path/java_runtimes/java-8-openjdk/lib/server"
+          - "@executable_path/java_runtimes/java-21-openjdk/lib"
+          - "@executable_path/java_runtimes/java-21-openjdk/lib/server"
+
         OTHER_LDFLAGS:
           - "-ldl"
           - "-lpthread"
@@ -61,3 +77,4 @@ targets:
           - "-Wno-unused-variable"
     entitlements:
       path: Lapis/Lapis.entitlements
+      

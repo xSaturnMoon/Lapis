@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: macos-14
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,34 +28,29 @@ jobs:
           unzip -q amethyst.zip -d temp_zip
           IPA_FILE=$(find temp_zip -name "*.ipa" | head -1)
           unzip -q "$IPA_FILE" -d temp_ipa
-          
+
           echo "=== Setting up Lapis Frameworks ==="
           mkdir -p Lapis/Frameworks
-          
-          # Find Amethyst App path
+
           AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
           echo "Found Amethyst App at: $AMETHYST_APP"
-          
-          # 1. Total Framework Extraction
+
+          # Copia tutti i framework e dylib da Amethyst
           if [ -d "$AMETHYST_APP/Frameworks" ]; then
             cp -av "$AMETHYST_APP/Frameworks/"* Lapis/Frameworks/
           fi
-          
-          # 2. Total Dylib Extraction (including standalone dylibs in app bundle)
+
+          # Copia dylib standalone nella root del bundle Amethyst
           find "$AMETHYST_APP" -name "*.dylib" -maxdepth 1 -exec cp -av {} Lapis/Frameworks/ \;
-          
-          # Verify detection
-          ls -R Lapis/Frameworks/
-          
-          echo "=== Done ==="
-          # Keep temp_ipa because we need it for the Create IPA step later (to extract runtime)
+
+          echo "=== Frameworks estratti ==="
+          ls -la Lapis/Frameworks/
 
       - name: Generate Xcode Project
         run: xcodegen generate --spec project.yml
 
       - name: Build
         run: |
-          
           xcodebuild clean build \
             -project Lapis.xcodeproj \
             -scheme Lapis \
@@ -70,36 +65,118 @@ jobs:
       - name: Create IPA
         run: |
           APP_PATH=$(find ./build -name "Lapis.app" -type d | head -1)
-          if [ -z "$APP_PATH" ]; then exit 1; fi
-          
-          
-          echo "=== Injecting Total Amethyst Engine ==="
-          mkdir -p "$APP_PATH/Frameworks"
-          # Copy every single component we extracted before
-          cp -rf Lapis/Frameworks/* "$APP_PATH/Frameworks/" || true
-          
+          if [ -z "$APP_PATH" ]; then
+            echo "ERRORE: Lapis.app non trovato"
+            exit 1
+          fi
+          echo "App path: $APP_PATH"
+
           AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
-          # Inject JVM Runtimes (Java 17/21)
-          if [ -d "$AMETHYST_APP/runtime" ]; then cp -rf "$AMETHYST_APP/runtime" "$APP_PATH/"; fi
-          if [ -d "$AMETHYST_APP/java_runtimes" ]; then cp -rf "$AMETHYST_APP/java_runtimes" "$APP_PATH/"; fi
-          
-          # Inject additional JARs if found (net.kdt.pojavlaunch classes)
-          find "$AMETHYST_APP" -name "*.jar" -exec cp -rf {} "$APP_PATH/" \;
-          
-          echo "=== Deep Signing Engine Components with Entitlements ==="
-          # Sign all frameworks and dylibs recursively using the app's entitlements
-          find "$APP_PATH/Frameworks" -name "*.framework" -exec codesign --force --deep --sign - --entitlements Lapis/Lapis.entitlements {} \;
-          find "$APP_PATH/Frameworks" -name "*.dylib" -exec codesign --force --sign - --entitlements Lapis/Lapis.entitlements {} \;
-          
-          # Sign the main app bundle with entitlements
+
+          # ── 1. Inietta Frameworks Amethyst ─────────────────────────────
+          echo "=== Iniezione Frameworks ==="
+          mkdir -p "$APP_PATH/Frameworks"
+          cp -rf Lapis/Frameworks/* "$APP_PATH/Frameworks/" || true
+
+          # ── 2. Inietta JRE ─────────────────────────────────────────────
+          # java_runtimes/ contiene OpenJDK 8/17/21 precompilati per arm64
+          echo "=== Iniezione JRE ==="
+          if [ -d "$AMETHYST_APP/java_runtimes" ]; then
+            cp -rf "$AMETHYST_APP/java_runtimes" "$APP_PATH/"
+            echo "java_runtimes iniettato"
+          else
+            echo "ATTENZIONE: java_runtimes non trovato in Amethyst"
+          fi
+
+          # Runtime legacy (alcuni build Amethyst usano 'runtime' invece di 'java_runtimes')
+          if [ -d "$AMETHYST_APP/runtime" ]; then
+            cp -rf "$AMETHYST_APP/runtime" "$APP_PATH/"
+          fi
+
+          # ── 3. Inietta JAR/asset aggiuntivi di Pojav ───────────────────
+          find "$AMETHYST_APP" -name "*.jar" -maxdepth 2 -exec cp -rf {} "$APP_PATH/" \;
+          # libs_caciocavallo (AWT headless per Minecraft)
+          if [ -d "$AMETHYST_APP/libs_caciocavallo17" ]; then
+            cp -rf "$AMETHYST_APP/libs_caciocavallo17" "$APP_PATH/"
+          fi
+
+          # ── 4. FIX CRITICO: riscrivi @rpath nei dylib del JRE ──────────
+          # I dylib di OpenJDK sono compilati con @rpath relativo che
+          # funziona su macOS ma non su iOS dentro un .app bundle.
+          # install_name_tool li riscrive con il path assoluto corretto
+          # così dyld li trova quando libjli carica libjvm a runtime.
+          echo "=== Fix @rpath JRE dylib ==="
+          for JRE_DIR in "$APP_PATH/java_runtimes"/*/; do
+            JRE_NAME=$(basename "$JRE_DIR")
+            JRE_LIB="$JRE_DIR/lib"
+            JRE_SERVER="$JRE_DIR/lib/server"
+
+            # Tutti i dylib in lib/ e lib/server/
+            find "$JRE_LIB" -name "*.dylib" | while read DYLIB; do
+              # Rimuovi rpath vecchi (macOS style) e aggiungi quelli iOS-compatibili
+              install_name_tool \
+                -add_rpath "@executable_path/Frameworks" \
+                -add_rpath "@executable_path/java_runtimes/$JRE_NAME/lib" \
+                -add_rpath "@executable_path/java_runtimes/$JRE_NAME/lib/server" \
+                "$DYLIB" 2>/dev/null || true
+            done
+            echo "  rpath aggiornato per $JRE_NAME"
+          done
+
+          # ── 5. FIX CRITICO: riscrivi @rpath nei dylib Amethyst ─────────
+          # Alcuni dylib Amethyst (libmobileglues, libgl4es ecc.) hanno
+          # dipendenze interne con @rpath che su iOS non vengono risolte
+          # senza un rpath esplicito verso Frameworks/
+          echo "=== Fix @rpath Frameworks dylib ==="
+          find "$APP_PATH/Frameworks" -name "*.dylib" | while read DYLIB; do
+            install_name_tool \
+              -add_rpath "@executable_path/Frameworks" \
+              "$DYLIB" 2>/dev/null || true
+          done
+
+          # ── 6. Firma tutto con le entitlements corrette ────────────────
+          # ORDINE IMPORTANTE: prima i componenti interni, poi il bundle.
+          # I dylib del JRE vanno firmati PRIMA del bundle principale.
+          echo "=== Firma componenti ==="
+
+          # Firma dylib JRE (tutti i livelli)
+          find "$APP_PATH/java_runtimes" -name "*.dylib" | while read DYLIB; do
+            codesign --force --sign - --entitlements Lapis/Lapis.entitlements "$DYLIB" 2>/dev/null || true
+          done
+          echo "  JRE dylib firmati"
+
+          # Firma framework Amethyst
+          find "$APP_PATH/Frameworks" -name "*.framework" | while read FW; do
+            codesign --force --deep --sign - --entitlements Lapis/Lapis.entitlements "$FW" 2>/dev/null || true
+          done
+          find "$APP_PATH/Frameworks" -name "*.dylib" | while read DYLIB; do
+            codesign --force --sign - --entitlements Lapis/Lapis.entitlements "$DYLIB" 2>/dev/null || true
+          done
+          echo "  Frameworks firmati"
+
+          # Firma il bundle principale (deve essere l'ultimo)
           codesign --force --deep --sign - --entitlements Lapis/Lapis.entitlements "$APP_PATH"
-          
-          # Pack into IPA
+          echo "  Bundle principale firmato"
+
+          # ── 7. Verifica finale ─────────────────────────────────────────
+          echo "=== Verifica struttura IPA ==="
+          echo "Frameworks:"
+          ls "$APP_PATH/Frameworks/" | head -30
+          echo ""
+          echo "java_runtimes:"
+          ls "$APP_PATH/java_runtimes/" 2>/dev/null || echo "  (non presente)"
+          echo ""
+          echo "libjli.dylib (JDK 17):"
+          ls "$APP_PATH/java_runtimes/java-17-openjdk/lib/libjli.dylib" 2>/dev/null && echo "  TROVATO ✓" || echo "  MANCANTE ✗"
+          echo "libjvm.dylib (JDK 17):"
+          ls "$APP_PATH/java_runtimes/java-17-openjdk/lib/server/libjvm.dylib" 2>/dev/null && echo "  TROVATO ✓" || echo "  MANCANTE ✗"
+
+          # ── 8. Crea IPA ────────────────────────────────────────────────
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r Lapis.ipa Payload
-          
-          echo "=== Final Status ==="
+
+          echo "=== IPA creato ==="
           ls -lh Lapis.ipa
 
       - name: Upload IPA
@@ -108,3 +185,4 @@ jobs:
           name: Lapis-iPadOS26-Final
           path: Lapis.ipa
           retention-days: 30
+          
