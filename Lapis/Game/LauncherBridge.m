@@ -184,6 +184,8 @@ static void appendLog(NSString *message) {
         JNIEnv  env = NULL;
         appendLog(@"[DIAGNOSTIC] Avvio in modalità -Xint (No JIT)...");
         appendLog(@"CALIAMO JNI_CreateJavaVM...");
+        
+        jint rc = createVM(&jvm, (void**)&env, &vmInitArgs);
         free(vmOptions);
 
         if (rc != JNI_OK) {
