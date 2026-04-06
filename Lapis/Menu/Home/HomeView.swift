@@ -12,11 +12,16 @@ struct HomeView: View {
     @State private var launchErrorText = ""
     @State private var isLaunching = false
     @State private var showGameView = false
-    
+
+    // AGGIUNTO: il config viene costruito in doLaunch e passato a GameViewContainer.
+    // Prima HomeView chiamava sia showGameView = true (che apriva GameViewController con args finti)
+    // SIA GameLauncher.shared.launch(config:) → doppio lancio simultaneo → crash.
+    @State private var pendingConfig: GameLauncher.LaunchConfig? = nil
+
     var body: some View {
         ZStack {
             mainContent
-            
+
             if showInputMode {
                 InputModeView { mode in
                     selectedInputMode = mode
@@ -29,7 +34,7 @@ struct HomeView: View {
                 }
                 .transition(.opacity)
             }
-            
+
             if showDownloadProgress {
                 DownloadProgressView(downloader: downloader)
                     .transition(.opacity)
@@ -44,7 +49,7 @@ struct HomeView: View {
                         }
                     }
             }
-            
+
             // Launching overlay
             if isLaunching {
                 ZStack {
@@ -73,7 +78,7 @@ struct HomeView: View {
             Text(launchErrorText)
         }
     }
-    
+
     // MARK: - Main Content
     private var mainContent: some View {
         ZStack {
@@ -83,7 +88,7 @@ struct HomeView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 HStack {
                     Text("HOME")
@@ -102,9 +107,9 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, LapisTheme.Spacing.xxl)
                 .padding(.top, LapisTheme.Spacing.xl)
-                
+
                 Spacer()
-                
+
                 VStack(spacing: LapisTheme.Spacing.xxl) {
                     VStack(spacing: LapisTheme.Spacing.sm) {
                         Text("LAPIS")
@@ -119,26 +124,25 @@ struct HomeView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(LapisTheme.Colors.textSecondary)
                     }
-                    
+
                     if let version = appState.selectedVersion {
                         versionCard(version: version)
                     } else {
                         noVersionCard
                     }
-                    
+
                     playButton
-                    
+
                     if !appState.isLoggedIn && appState.selectedVersion != nil {
                         Text("Sign in with Microsoft to play")
                             .font(.system(size: 12))
                             .foregroundColor(LapisTheme.Colors.warning)
                     }
                 }
-                
+
                 Spacer()
-                
+
                 HStack {
-                    // Engine status
                     HStack(spacing: LapisTheme.Spacing.md) {
                         HStack(spacing: 4) {
                             Circle()
@@ -148,7 +152,7 @@ struct HomeView: View {
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(LapisTheme.Colors.textMuted)
                         }
-                        
+
                         let isJIT = LapisEngine_isJITEnabled()
                         HStack(spacing: 4) {
                             Image(systemName: isJIT ? "bolt.circle.fill" : "bolt.slash.circle.fill")
@@ -168,14 +172,21 @@ struct HomeView: View {
                 .padding(.bottom, LapisTheme.Spacing.lg)
             }
         }
+        // CORRETTO: ora passa pendingConfig a GameViewContainer invece di avviare
+        // GameLauncher.shared.launch separatamente. Il lancio reale avviene dentro
+        // GameViewController.launchMinecraft() → GameLauncher.shared.launch(config:).
+        // Prima c'erano due lanci simultanei: uno da qui e uno da GameViewController con args finti.
         .fullScreenCover(isPresented: $showGameView) {
-            if appState.selectedVersion != nil {
-                GameViewContainer(inputMode: selectedInputMode == .keyboard ? .keyboard : .touch)
-                    .ignoresSafeArea()
+            if let config = pendingConfig {
+                GameViewContainer(
+                    inputMode: config.inputMode,
+                    config: config   // ← CORRETTO: passa il config reale
+                )
+                .ignoresSafeArea()
             }
         }
     }
-    
+
     // MARK: - Version Card
     private func versionCard(version: GameVersion) -> some View {
         Menu {
@@ -220,7 +231,7 @@ struct HomeView: View {
             .glassBackground()
         }
     }
-    
+
     private var noVersionCard: some View {
         VStack(spacing: LapisTheme.Spacing.md) {
             Image(systemName: "square.stack.3d.up.slash")
@@ -241,12 +252,12 @@ struct HomeView: View {
         .frame(maxWidth: 420)
         .glassBackground()
     }
-    
+
     private var isVersionReady: Bool {
         guard let version = appState.selectedVersion else { return false }
         return downloader.isVersionDownloaded(version.id)
     }
-    
+
     private var playButton: some View {
         Button {
             if isVersionReady {
@@ -275,7 +286,9 @@ struct HomeView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: LapisTheme.Radius.medium)
                         .fill(LinearGradient(
-                            colors: isVersionReady ? [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark] : [LapisTheme.Colors.textSecondary, LapisTheme.Colors.textMuted],
+                            colors: isVersionReady
+                                ? [LapisTheme.Colors.accent, LapisTheme.Colors.accentDark]
+                                : [LapisTheme.Colors.textSecondary, LapisTheme.Colors.textMuted],
                             startPoint: .top, endPoint: .bottom
                         ))
                     if pulseAnimation && isVersionReady {
@@ -293,7 +306,9 @@ struct HomeView: View {
         .opacity(appState.selectedVersion == nil || !appState.isLoggedIn ? 0.4 : 1.0)
         .onAppear {
             appState.loadInstalledVersions()
-            if let last = appState.installedVersions.first(where: { "\($0.versionNumber)-\($0.loader.rawValue)" == lastPlayedId || $0.folderName == lastPlayedId }) {
+            if let last = appState.installedVersions.first(where: {
+                "\($0.versionNumber)-\($0.loader.rawValue)" == lastPlayedId || $0.folderName == lastPlayedId
+            }) {
                 appState.selectedVersion = GameVersion(id: last.versionNumber, type: "release", url: "", releaseTime: "")
                 appState.selectedLoader = last.loader
             }
@@ -302,11 +317,11 @@ struct HomeView: View {
             }
         }
     }
-    
+
     // MARK: - Game Flow
     private func startGameFlow(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
-        
+
         if downloader.isVersionDownloaded(version.id) {
             doLaunch(mode: mode)
         } else {
@@ -316,17 +331,12 @@ struct HomeView: View {
             }
         }
     }
-    
+
     private func doLaunch(mode: InputMode) {
         guard let version = appState.selectedVersion else { return }
-        
+
         lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
-        
-        withAnimation { 
-            isLaunching = true 
-            showGameView = true
-        }
-        
+
         let config = GameLauncher.LaunchConfig(
             versionId: version.id,
             loader: appState.selectedLoader,
@@ -336,17 +346,16 @@ struct HomeView: View {
             accessToken: appState.accessToken,
             memoryAllocation: appState.memoryAllocation
         )
-        
-        // Lancio tramite il nuovo sistema asincrono di GameLauncher
-        GameLauncher.shared.launch(config: config) { error in
-            // Questo blocco viene eseguito quando il thread del JVM termina
-            DispatchQueue.main.async {
-                withAnimation { isLaunching = false }
-                if let error = error {
-                    launchErrorText = error
-                    showLaunchError = true
-                }
-            }
+
+        // CORRETTO: salva il config in pendingConfig, poi mostra la game view.
+        // Il lancio vero parte da GameViewController.launchMinecraft() → GameLauncher.shared.launch(config:).
+        // Prima: showGameView apriva GameViewController con args finti E GameLauncher.shared.launch
+        // veniva chiamato anche qui → due lanci simultanei → crash.
+        pendingConfig = config
+
+        withAnimation {
+            isLaunching = true
+            showGameView = true
         }
     }
 }
