@@ -31,19 +31,21 @@ jobs:
           
           echo "=== Setting up Lapis Frameworks ==="
           mkdir -p Lapis/Frameworks
-          # Search and copy the new Amethyst frameworks
-          find temp_ipa -name "AltKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
-          find temp_ipa -name "CAltKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
-          find temp_ipa -name "UnzipKit.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
-          find temp_ipa -name "libEGL.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
-          find temp_ipa -name "libGLESv2.framework" -type d -exec cp -av {} Lapis/Frameworks/ \;
+          
+          # Find Amethyst App path
+          AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
+          echo "Found Amethyst App at: $AMETHYST_APP"
+          
+          # 1. Total Framework Extraction
+          if [ -d "$AMETHYST_APP/Frameworks" ]; then
+            cp -av "$AMETHYST_APP/Frameworks/"* Lapis/Frameworks/
+          fi
+          
+          # 2. Total Dylib Extraction (including standalone dylibs in app bundle)
+          find "$AMETHYST_APP" -name "*.dylib" -maxdepth 1 -exec cp -av {} Lapis/Frameworks/ \;
           
           # Verify detection
           ls -R Lapis/Frameworks/
-          
-          echo "=== SYMBOL DISCOVERY (Find entry point) ==="
-          # Search for entry point symbols in ALL extracted frameworks
-          find Lapis/Frameworks -name "*.framework" -exec sh -c 'echo "Symbols for $1:"; nm -gU "$1/${1##*/%.framework}"' _ {} \; || true
           
           echo "=== Done ==="
           # Keep temp_ipa because we need it for the Create IPA step later (to extract runtime)
@@ -73,11 +75,16 @@ jobs:
           
           echo "=== Injecting Total Amethyst Engine ==="
           mkdir -p "$APP_PATH/Frameworks"
+          # Copy every single component we extracted before
           cp -rf Lapis/Frameworks/* "$APP_PATH/Frameworks/" || true
           
           AMETHYST_APP=$(find temp_ipa -name "*.app" -type d | head -1)
+          # Inject JVM Runtimes (Java 17/21)
           if [ -d "$AMETHYST_APP/runtime" ]; then cp -rf "$AMETHYST_APP/runtime" "$APP_PATH/"; fi
           if [ -d "$AMETHYST_APP/java_runtimes" ]; then cp -rf "$AMETHYST_APP/java_runtimes" "$APP_PATH/"; fi
+          
+          # Inject additional JARs if found (net.kdt.pojavlaunch classes)
+          find "$AMETHYST_APP" -name "*.jar" -exec cp -rf {} "$APP_PATH/" \;
           
           echo "=== Deep Signing Engine Components with Entitlements ==="
           # Sign all frameworks and dylibs recursively using the app's entitlements
