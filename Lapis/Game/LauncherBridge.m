@@ -140,10 +140,6 @@ static void appendLog(NSString *message) {
         NSString *mainClass = @"net.minecraft.client.main.Main";
         BOOL foundMain = NO;
 
-        // DEBUG: Forza modalità interpretata per testare se il crash è dovuto al JIT
-        [jvmOpts addObject:@"-Xint"];
-        [jvmOpts addObject:@"-Xms64M"];
-
         for (NSUInteger i = 1; i < args.count; i++) {
             NSString *arg = args[i];
             if (foundMain) { [mcArgs addObject:arg]; continue; }
@@ -151,7 +147,6 @@ static void appendLog(NSString *message) {
                 if (i + 1 < args.count) {
                     i++;
                     NSString *cpPath = args[i];
-                    appendLog([NSString stringWithFormat:@"Classpath Length: %lu chars", (unsigned long)cpPath.length]);
                     [jvmOpts addObject:[NSString stringWithFormat:@"-Djava.class.path=%@", cpPath]];
                 }
             } else if ([arg hasPrefix:@"-"]) {
@@ -161,20 +156,31 @@ static void appendLog(NSString *message) {
             }
         }
 
-        // 5. RAM Readiness Check (Simulazione)
-        // ... (resto della logica invariato per brevità nel diff) ...
+        // DIAGNOSTICA: Forza modalità interpretata IN CIMA alla lista
+        [jvmOpts insertObject:@"-Xint" atIndex:0]; 
+        [jvmOpts insertObject:@"-Xms64M" atIndex:1];
 
-        // 6. Create Java VM (POINT OF NO RETURN)
+        // 5. Create Java VM (POINT OF NO RETURN)
         NSUInteger optCount = jvmOpts.count;
         JavaVMOption *vmOptions = (JavaVMOption *)calloc(optCount, sizeof(JavaVMOption));
+        
+        appendLog(@"[DIAGNOSTIC] Preparazione opzioni JVM...");
         for (NSUInteger i = 0; i < optCount; i++) {
-            vmOptions[i].optionString = (char *)[jvmOpts[i] UTF8String];
+            NSString *opt = jvmOpts[i];
+            vmOptions[i].optionString = (char *)[opt UTF8String];
             vmOptions[i].extraInfo    = NULL;
-            appendLog([NSString stringWithFormat:@"JVM Option [%lu]: %@", (unsigned long)i, jvmOpts[i]]);
+            
+            // Abbreviato per evitare crash da stringhe enormi (es. classpath) nel logger
+            if (opt.length > 200) {
+                appendLog([NSString stringWithFormat:@"JVM Option [%lu]: (Lunga %lu chars) %@...", 
+                           (unsigned long)i, (unsigned long)opt.length, [opt substringToIndex:150]]);
+            } else {
+                appendLog([NSString stringWithFormat:@"JVM Option [%lu]: %@", (unsigned long)i, opt]);
+            }
         }
 
         JavaVMInitArgs vmInitArgs;
-        memset(&vmInitArgs, 0, sizeof(vmInitArgs)); // FIX: Pulizia memoria per ARM64
+        memset(&vmInitArgs, 0, sizeof(vmInitArgs)); // FIX: Pulizia memoria fondamentale per ARM64
         vmInitArgs.version = JNI_VERSION_1_8;
         vmInitArgs.nOptions = (jint)optCount;
         vmInitArgs.options = vmOptions;
@@ -182,14 +188,16 @@ static void appendLog(NSString *message) {
 
         JavaVM  jvm = NULL;
         JNIEnv  env = NULL;
-        appendLog(@"[DIAGNOSTIC] Avvio in modalità -Xint (No JIT)...");
+        appendLog(@"[DIAGNOSTIC] Avvio in modalità -Xint (Safe Mode)...");
         appendLog(@"CALIAMO JNI_CreateJavaVM...");
         
         jint rc = createVM(&jvm, (void**)&env, &vmInitArgs);
+        
+        // Non liberare vmOptions prima di aver finito con la JVM se necessario, ma qui va bene
         free(vmOptions);
 
         if (rc != JNI_OK) {
-            appendLog([NSString stringWithFormat:@"FATAL: JVM Creation failed with RC %d", rc]);
+            appendLog([NSString stringWithFormat:@"FATAL: JNI_CreateJavaVM fallito con codice: %d", (int)rc]);
             if (completion) completion(-3); return;
         }
         appendLog(@"JVM CREATA CON SUCCESSO ✓");
