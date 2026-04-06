@@ -73,97 +73,68 @@ static NSString *launchLogPath = nil;
 
 static void appendLog(NSString *message) {
     if (!launchLogPath) {
-        NSString *docs = [NSSearchPathForDirectoriesInDomains(
-            NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
         launchLogPath = [docs stringByAppendingPathComponent:@"Lapis/launch.log"];
     }
-    [[NSFileManager defaultManager]
-        createDirectoryAtPath:[launchLogPath stringByDeletingLastPathComponent]
-        withIntermediateDirectories:YES attributes:nil error:nil];
-
-    NSString *ts = [NSDateFormatter
-        localizedStringFromDate:[NSDate date]
-        dateStyle:NSDateFormatterNoStyle
-        timeStyle:NSDateFormatterMediumStyle];
+    [[NSFileManager defaultManager] createDirectoryAtPath:[launchLogPath stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *ts = [NSDateFormatter localizedStringFromDate:[NSDate date] dateStyle:NSDateFormatterNoStyle timeStyle:NSDateFormatterMediumStyle];
     NSString *line = [NSString stringWithFormat:@"[%@] %@\n", ts, message];
-
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:launchLogPath];
     if (fh) {
         [fh seekToEndOfFile];
         [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh synchronizeFile]; // FIX: Forza la scrittura immediata sul disco prima del crash
         [fh closeFile];
     } else {
-        [line writeToFile:launchLogPath atomically:YES
-               encoding:NSUTF8StringEncoding error:nil];
+        [line writeToFile:launchLogPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
     NSLog(@"[LauncherBridge] %@", message);
 }
 
-// ─────────────────────────────────────────────
 @implementation LauncherBridge
 
-+ (void)launchWithArgs:(NSArray<NSString *> *)args
-            completion:(void (^)(int))completion {
-
++ (void)launchWithArgs:(NSArray<NSString *> *)args completion:(void (^)(int))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        appendLog(@"══════════ LAPIS LAUNCH START ══════════");
+        appendLog(@"══════════ DEEP IGNITION START ══════════");
 
-        // ──────────────────────────────────────
-        // FIX BUG #3 — unica fonte di verità per
-        // JAVA_HOME: usa quello già settato da
-        // GameLauncher.swift; fallback solo se assente.
-        // ──────────────────────────────────────
-        const char *javaHomeCStr = getenv("JAVA_HOME");
-        if (!javaHomeCStr) {
-            NSString *fb = [[[NSBundle mainBundle] bundlePath]
-                stringByAppendingPathComponent:@"java_runtimes/java-17-openjdk"];
-            setenv("JAVA_HOME", [fb UTF8String], 1);
-            javaHomeCStr = getenv("JAVA_HOME");
-            appendLog([NSString stringWithFormat:
-                @"JAVA_HOME assente, uso fallback bundle: %s", javaHomeCStr]);
+        // 1. Resolve JAVA_HOME
+        const char *jhEnv = getenv("JAVA_HOME");
+        NSString *jrePath = jhEnv ? [NSString stringWithUTF8String:jhEnv] : [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"java_runtimes/java-17-openjdk"];
+        appendLog([NSString stringWithFormat:@"JRE: %@", jrePath]);
+
+        // 2. FORCED LOAD: libjvm.dylib (Il cuore del motore)
+        // libjli.dylib carica libjvm internamente, ma noi lo facciamo prima per vedere l'errore.
+        NSString *libjvmPath = [jrePath stringByAppendingPathComponent:@"lib/server/libjvm.dylib"];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:libjvmPath]) {
+            libjvmPath = [jrePath stringByAppendingPathComponent:@"lib/libjvm.dylib"]; // Fallback legacy
         }
-        NSString *jrePath = [NSString stringWithUTF8String:javaHomeCStr];
-        appendLog([NSString stringWithFormat:@"JAVA_HOME → %@", jrePath]);
+        
+        appendLog([NSString stringWithFormat:@"Forcing dlopen libjvm: %@", libjvmPath]);
+        void *libjvm = dlopen([libjvmPath UTF8String], RTLD_NOW | RTLD_GLOBAL);
+        if (!libjvm) {
+            appendLog([NSString stringWithFormat:@"CRITICAL Error loading libjvm: %s", dlerror()]);
+            if (completion) completion(-10); return;
+        }
+        appendLog(@"libjvm.dylib CARICATO ✓ (Il motore è in memoria)");
 
-        // ──────────────────────────────────────
-        // FIX BUG #1 PARTE 1 — carica libjli
-        // ──────────────────────────────────────
+        // 3. Load libjli.dylib (L'accenditore)
         NSString *libjliPath = [jrePath stringByAppendingPathComponent:@"lib/libjli.dylib"];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:libjliPath]) {
-            // Java 8 mette libjli in lib/jli/
-            libjliPath = [jrePath stringByAppendingPathComponent:@"lib/jli/libjli.dylib"];
-        }
+        if (![[NSFileManager defaultManager] fileExistsAtPath:libjliPath]) libjliPath = [jrePath stringByAppendingPathComponent:@"lib/jli/libjli.dylib"];
+        
         appendLog([NSString stringWithFormat:@"dlopen libjli: %@", libjliPath]);
-
         void *libjli = dlopen([libjliPath UTF8String], RTLD_NOW | RTLD_GLOBAL);
         if (!libjli) {
-            appendLog([NSString stringWithFormat:
-                @"FATAL: dlopen libjli fallito — %s", dlerror()]);
-            if (completion) completion(-1);
-            return;
+            appendLog([NSString stringWithFormat:@"FATAL dlopen jli: %s", dlerror()]);
+            if (completion) completion(-1); return;
         }
-        appendLog(@"libjli caricato ✓");
 
-        JNI_CreateJavaVM_t createVM =
-            (JNI_CreateJavaVM_t)dlsym(libjli, "JNI_CreateJavaVM");
+        JNI_CreateJavaVM_t createVM = (JNI_CreateJavaVM_t)dlsym(libjli, "JNI_CreateJavaVM");
         if (!createVM) {
-            appendLog(@"FATAL: simbolo JNI_CreateJavaVM non trovato in libjli");
-            if (completion) completion(-2);
-            return;
+            appendLog(@"FATAL: JNI_CreateJavaVM not found in jli.");
+            if (completion) completion(-2); return;
         }
-        appendLog(@"JNI_CreateJavaVM risolto ✓");
 
-        // ──────────────────────────────────────
-        // FIX BUG #2 — converti args Swift in
-        // JavaVMOption[] + lista argomenti MC.
-        //
-        // Layout atteso da GameLauncher.swift:
-        //   args[0]   = "java"            (ignorato)
-        //   args[1..] = opzioni JVM       (-Xmx, -D*, --add-*)
-        //   "-cp" <classpath>             (→ -Djava.class.path=)
-        //   <mainClass>                   (primo arg non-flag)
-        //   args restanti = argomenti MC  (--username ecc.)
-        // ──────────────────────────────────────
+        // 4. Parse Arguments
         NSMutableArray<NSString*> *jvmOpts = [NSMutableArray array];
         NSMutableArray<NSString*> *mcArgs  = [NSMutableArray array];
         NSString *mainClass = @"net.minecraft.client.main.Main";
@@ -171,121 +142,100 @@ static void appendLog(NSString *message) {
 
         for (NSUInteger i = 1; i < args.count; i++) {
             NSString *arg = args[i];
-
-            if (foundMain) {
-                [mcArgs addObject:arg];
-                continue;
-            }
-
+            if (foundMain) { [mcArgs addObject:arg]; continue; }
             if ([arg isEqualToString:@"-cp"] || [arg isEqualToString:@"-classpath"]) {
                 if (i + 1 < args.count) {
                     i++;
-                    [jvmOpts addObject:
-                        [NSString stringWithFormat:@"-Djava.class.path=%@", args[i]]];
+                    [jvmOpts addObject:[NSString stringWithFormat:@"-Djava.class.path=%@", args[i]]];
                 }
             } else if ([arg hasPrefix:@"-"]) {
                 [jvmOpts addObject:arg];
             } else {
-                mainClass = arg;   // primo token non-flag = classe principale
-                foundMain = YES;
+                mainClass = arg; foundMain = YES;
             }
         }
 
-        appendLog([NSString stringWithFormat:
-            @"JVM options: %lu | Main: %@ | MC args: %lu",
-            (unsigned long)jvmOpts.count,
-            mainClass,
-            (unsigned long)mcArgs.count]);
+        // 5. RAM Readiness Check (Simulazione)
+        for (NSString *opt in jvmOpts) {
+            if ([opt hasPrefix:@"-Xmx"]) {
+                long long memMB = [[opt stringByReplacingOccurrencesOfString:@"-Xmx" withString:@""] integerValue];
+                if (memMB > 0) {
+                    appendLog([NSString stringWithFormat:@"Test allocazione RAM: %lld MB...", memMB]);
+                    void *testMem = malloc((size_t)(memMB * 1024 * 1024));
+                    if (testMem) {
+                        free(testMem);
+                        appendLog(@"Test RAM superato ✓");
+                    } else {
+                        appendLog(@"!!! ERRORE CRITICO RAM !!!");
+                        appendLog(@"L'iPad ha rifiutato l'allocazione. Abbassa la memoria nelle impostazioni o usa GetMoreRAM.");
+                        if (completion) completion(-20); return;
+                    }
+                }
+            }
+        }
 
-        // ──────────────────────────────────────
-        // FIX BUG #1 PARTE 2 — crea la JVM
-        // ──────────────────────────────────────
+        // 6. Create Java VM (POINT OF NO RETURN)
         NSUInteger optCount = jvmOpts.count;
         JavaVMOption *vmOptions = (JavaVMOption *)calloc(optCount, sizeof(JavaVMOption));
         for (NSUInteger i = 0; i < optCount; i++) {
             vmOptions[i].optionString = (char *)[jvmOpts[i] UTF8String];
             vmOptions[i].extraInfo    = NULL;
+            appendLog([NSString stringWithFormat:@"JVM Option [%lu]: %@", (unsigned long)i, jvmOpts[i]]);
         }
 
         JavaVMInitArgs vmInitArgs;
-        vmInitArgs.version            = JNI_VERSION_1_8;
-        vmInitArgs.nOptions           = (jint)optCount;
-        vmInitArgs.options            = vmOptions;
+        vmInitArgs.version = JNI_VERSION_1_8;
+        vmInitArgs.nOptions = (jint)optCount;
+        vmInitArgs.options = vmOptions;
         vmInitArgs.ignoreUnrecognized = JNI_TRUE;
 
         JavaVM  jvm = NULL;
         JNIEnv  env = NULL;
-        jint    rc  = createVM(&jvm, (void**)&env, &vmInitArgs);
+        appendLog(@"CALIAMO JNI_CreateJavaVM... Se il log finisce qui, il problema è il JIT/Entitlements.");
+        
+        jint rc = createVM(&jvm, (void**)&env, &vmInitArgs);
         free(vmOptions);
 
         if (rc != JNI_OK) {
-            appendLog([NSString stringWithFormat:
-                @"FATAL: JNI_CreateJavaVM ha restituito %d. "
-                @"Controlla -Xmx, classpath e opzioni JVM nei log sopra.", rc]);
-            if (completion) completion(-3);
-            return;
+            appendLog([NSString stringWithFormat:@"FATAL: JVM Creation failed with RC %d", rc]);
+            if (completion) completion(-3); return;
         }
-        appendLog(@"JVM creata con successo ✓");
+        appendLog(@"JVM CREATA CON SUCCESSO ✓");
 
-        // ──────────────────────────────────────
-        // FIX BUG #1 PARTE 3 — invoca Main Java
-        // tramite JNI (FindClass → GetStaticMethodID
-        // → NewObjectArray → CallStaticVoidMethodA)
-        // ──────────────────────────────────────
-        FindClass_t             FindClass_fn              = (FindClass_t)             jniSlot(env, SLOT_FindClass);
-        ExceptionDescribe_t     ExceptionDescribe_fn      = (ExceptionDescribe_t)     jniSlot(env, SLOT_ExceptionDescribe);
-        ExceptionCheck_t        ExceptionCheck_fn         = (ExceptionCheck_t)        jniSlot(env, SLOT_ExceptionCheck);
-        GetStaticMethodID_t     GetStaticMethodID_fn      = (GetStaticMethodID_t)     jniSlot(env, SLOT_GetStaticMethodID);
-        NewStringUTF_t          NewStringUTF_fn           = (NewStringUTF_t)          jniSlot(env, SLOT_NewStringUTF);
-        NewObjectArray_t        NewObjectArray_fn         = (NewObjectArray_t)        jniSlot(env, SLOT_NewObjectArray);
-        SetObjectArrayElement_t SetObjectArrayElement_fn  = (SetObjectArrayElement_t) jniSlot(env, SLOT_SetObjectArrayElement);
-        CallStaticVoidMethodA_t CallStaticVoidMethodA_fn  = (CallStaticVoidMethodA_t) jniSlot(env, SLOT_CallStaticVoidMethodA);
+        // 6. Invocazione Class Main
+        FindClass_t FindClass_fn = (FindClass_t)jniSlot(env, SLOT_FindClass);
+        GetStaticMethodID_t GetStaticMethodID_fn = (GetStaticMethodID_t)jniSlot(env, SLOT_GetStaticMethodID);
+        NewStringUTF_t NewStringUTF_fn = (NewStringUTF_t)jniSlot(env, SLOT_NewStringUTF);
+        NewObjectArray_t NewObjectArray_fn = (NewObjectArray_t)jniSlot(env, SLOT_NewObjectArray);
+        SetObjectArrayElement_t SetObjectArrayElement_fn = (SetObjectArrayElement_t)jniSlot(env, SLOT_SetObjectArrayElement);
+        CallStaticVoidMethodA_t CallStaticVoidMethodA_fn = (CallStaticVoidMethodA_t)jniSlot(env, SLOT_CallStaticVoidMethodA);
+        ExceptionCheck_t ExceptionCheck_fn = (ExceptionCheck_t)jniSlot(env, SLOT_ExceptionCheck);
+        ExceptionDescribe_t ExceptionDescribe_fn = (ExceptionDescribe_t)jniSlot(env, SLOT_ExceptionDescribe);
 
-        // "net.minecraft.client.main.Main" → "net/minecraft/client/main/Main"
         NSString *mainClassJNI = [mainClass stringByReplacingOccurrencesOfString:@"." withString:@"/"];
-        appendLog([NSString stringWithFormat:@"FindClass: %@", mainClassJNI]);
-
         jclass mainCls = FindClass_fn(env, [mainClassJNI UTF8String]);
         if (!mainCls || ExceptionCheck_fn(env)) {
-            appendLog([NSString stringWithFormat:
-                @"FATAL: FindClass('%@') fallita. "
-                @"Il classpath non contiene il JAR di Minecraft o le librerie richieste.", mainClassJNI]);
-            ExceptionDescribe_fn(env);
-            if (completion) completion(-4);
-            return;
+            appendLog(@"FATAL: Main class not found.");
+            if (completion) completion(-4); return;
         }
 
-        jmethodID mainMethodID = GetStaticMethodID_fn(env, mainCls, "main", "([Ljava/lang/String;)V");
-        if (!mainMethodID || ExceptionCheck_fn(env)) {
-            appendLog(@"FATAL: GetStaticMethodID per main([String)V fallita.");
-            ExceptionDescribe_fn(env);
-            if (completion) completion(-5);
-            return;
-        }
-
-        // Costruisci String[] per gli argomenti Minecraft
-        jclass   stringCls = FindClass_fn(env, "java/lang/String");
-        jobjectArray jArgArray = NewObjectArray_fn(env, (jint)mcArgs.count, stringCls, NULL);
+        jmethodID mid = GetStaticMethodID_fn(env, mainCls, "main", "([Ljava/lang/String;)V");
+        jclass stringCls = FindClass_fn(env, "java/lang/String");
+        jobjectArray jArgs = NewObjectArray_fn(env, (jint)mcArgs.count, stringCls, NULL);
         for (NSUInteger i = 0; i < mcArgs.count; i++) {
-            jstring jStr = NewStringUTF_fn(env, [mcArgs[i] UTF8String]);
-            SetObjectArrayElement_fn(env, jArgArray, (jint)i, jStr);
+            SetObjectArrayElement_fn(env, jArgs, (jint)i, NewStringUTF_fn(env, [mcArgs[i] UTF8String]));
         }
 
-        appendLog(@"Invocazione Main Java... il gioco parte ora.");
-
-        // Chiama Main.main(String[]) — blocca finché Minecraft non esce
-        jvalue jvArgs[1];
-        jvArgs[0].l = jArgArray;
-        CallStaticVoidMethodA_fn(env, mainCls, mainMethodID, jvArgs);
+        appendLog(@"AVVIO MINECRAFT...");
+        jvalue jvArgs[1]; jvArgs[0].l = jArgs;
+        CallStaticVoidMethodA_fn(env, mainCls, mid, jvArgs);
 
         if (ExceptionCheck_fn(env)) {
-            appendLog(@"ERRORE: eccezione Java non gestita in Main:");
+            appendLog(@"Eccezione rilevata in Java:");
             ExceptionDescribe_fn(env);
-            if (completion) completion(-6);
-            return;
         }
 
-        appendLog(@"Minecraft terminato normalmente ✓");
+        appendLog(@"Minecraft terminato.");
         if (completion) completion(0);
     });
 }
