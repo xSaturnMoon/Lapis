@@ -3,17 +3,19 @@ import SwiftUI
 
 /**
  * GameViewController: Il "contenitore" grafico ufficiale di Minecraft.
- * Gestisce il rendering dell'engine e gli input esterni.
- * Riceve un LaunchConfig e delega il lancio reale a GameLauncher.
+ * Riceve un LaunchConfig, lancia il gioco tramite GameLauncher,
+ * e notifica HomeView al termine tramite onGameEnd.
  */
 class GameViewController: UIViewController {
 
     let inputMode: InputMode
-    let config: GameLauncher.LaunchConfig   // ← AGGIUNTO: config reale passata da HomeView
+    let config: GameLauncher.LaunchConfig
+    var onGameEnd: ((String?) -> Void)?   // callback verso HomeView per resettare stato
 
-    init(inputMode: InputMode, config: GameLauncher.LaunchConfig) {
+    init(inputMode: InputMode, config: GameLauncher.LaunchConfig, onGameEnd: ((String?) -> Void)? = nil) {
         self.inputMode = inputMode
         self.config = config
+        self.onGameEnd = onGameEnd
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -22,14 +24,13 @@ class GameViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-
         setupInputMode()
-        launchMinecraft()   // ora usa config reale, non args finti
+        launchMinecraft()
     }
 
     private func setupInputMode() {
         if inputMode == .keyboard {
-            self.requestPointerLock()
+            requestPointerLock()
         } else {
             print("[GameView] Caricamento tasti virtuali...")
         }
@@ -46,17 +47,17 @@ class GameViewController: UIViewController {
     }
 
     private func launchMinecraft() {
-        NSLog("[GameView] Avvio tramite GameLauncher con config reale per versione: \(config.versionId)")
+        NSLog("[GameView] Avvio tramite GameLauncher per versione: \(config.versionId)")
 
-        // CORRETTO: usa GameLauncher.shared.launch con la config reale ricevuta da HomeView.
-        // Prima era: LauncherBridge.launch(withArgs: ["minecraft", "--version", "1.20"]) ← CRASH
         GameLauncher.shared.launch(config: config) { [weak self] error in
+            guard let self = self else { return }
             DispatchQueue.main.async {
-                if let error = error {
-                    NSLog("[GameView] Errore lancio: \(error)")
-                }
-                // Chiude la game view quando il processo JVM termina
-                self?.dismiss(animated: true)
+                // Prima di chiudere la view, notifica HomeView.
+                // HomeView usa questo per: resettare isLaunching, mostrare errore.
+                // PRIMA questo callback non esisteva: HomeView settava isLaunching=true
+                // e non lo resettava mai → overlay "Launching Minecraft..." bloccato in eterno.
+                self.onGameEnd?(error)
+                self.dismiss(animated: true)
             }
         }
     }
@@ -65,10 +66,11 @@ class GameViewController: UIViewController {
 // MARK: - SwiftUI Representable
 struct GameViewContainer: UIViewControllerRepresentable {
     let inputMode: InputMode
-    let config: GameLauncher.LaunchConfig   // ← AGGIUNTO: ora riceve il config da HomeView
+    let config: GameLauncher.LaunchConfig
+    var onGameEnd: ((String?) -> Void)? = nil
 
     func makeUIViewController(context: Context) -> GameViewController {
-        return GameViewController(inputMode: inputMode, config: config)
+        return GameViewController(inputMode: inputMode, config: config, onGameEnd: onGameEnd)
     }
 
     func updateUIViewController(_ uiViewController: GameViewController, context: Context) {}

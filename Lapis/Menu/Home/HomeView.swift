@@ -12,10 +12,6 @@ struct HomeView: View {
     @State private var launchErrorText = ""
     @State private var isLaunching = false
     @State private var showGameView = false
-
-    // AGGIUNTO: il config viene costruito in doLaunch e passato a GameViewContainer.
-    // Prima HomeView chiamava sia showGameView = true (che apriva GameViewController con args finti)
-    // SIA GameLauncher.shared.launch(config:) → doppio lancio simultaneo → crash.
     @State private var pendingConfig: GameLauncher.LaunchConfig? = nil
 
     var body: some View {
@@ -50,7 +46,9 @@ struct HomeView: View {
                     }
             }
 
-            // Launching overlay
+            // Overlay "Launching Minecraft..." mostrato solo mentre isLaunching è true.
+            // Viene resettato da onGameEnd (callback da GameViewController) quando il gioco
+            // termina oppure crasha — PRIMA questo non succedeva mai, overlay bloccato.
             if isLaunching {
                 ZStack {
                     LapisTheme.Colors.background.opacity(0.9)
@@ -172,15 +170,21 @@ struct HomeView: View {
                 .padding(.bottom, LapisTheme.Spacing.lg)
             }
         }
-        // CORRETTO: ora passa pendingConfig a GameViewContainer invece di avviare
-        // GameLauncher.shared.launch separatamente. Il lancio reale avviene dentro
-        // GameViewController.launchMinecraft() → GameLauncher.shared.launch(config:).
-        // Prima c'erano due lanci simultanei: uno da qui e uno da GameViewController con args finti.
         .fullScreenCover(isPresented: $showGameView) {
             if let config = pendingConfig {
                 GameViewContainer(
                     inputMode: config.inputMode,
-                    config: config   // ← CORRETTO: passa il config reale
+                    config: config,
+                    // onGameEnd: chiamato da GameViewController quando il gioco termina.
+                    // Resetta isLaunching e mostra errore se presente.
+                    // PRIMA questo closure non esisteva → isLaunching mai resettato → UI bloccata.
+                    onGameEnd: { error in
+                        withAnimation { isLaunching = false }
+                        if let error = error {
+                            launchErrorText = error
+                            showLaunchError = true
+                        }
+                    }
                 )
                 .ignoresSafeArea()
             }
@@ -337,7 +341,7 @@ struct HomeView: View {
 
         lastPlayedId = "\(version.id)-\(appState.selectedLoader.rawValue)"
 
-        let config = GameLauncher.LaunchConfig(
+        pendingConfig = GameLauncher.LaunchConfig(
             versionId: version.id,
             loader: appState.selectedLoader,
             inputMode: mode,
@@ -347,15 +351,12 @@ struct HomeView: View {
             memoryAllocation: appState.memoryAllocation
         )
 
-        // CORRETTO: salva il config in pendingConfig, poi mostra la game view.
-        // Il lancio vero parte da GameViewController.launchMinecraft() → GameLauncher.shared.launch(config:).
-        // Prima: showGameView apriva GameViewController con args finti E GameLauncher.shared.launch
-        // veniva chiamato anche qui → due lanci simultanei → crash.
-        pendingConfig = config
-
         withAnimation {
             isLaunching = true
             showGameView = true
         }
+        // Il lancio reale parte da GameViewController.launchMinecraft().
+        // Quando finisce (successo o errore), onGameEnd resetta isLaunching e
+        // mostra l'alert con il messaggio di errore preciso.
     }
 }
