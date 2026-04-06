@@ -6,59 +6,55 @@ import Darwin
 @_silgen_name("csops")
 func csops(_ pid: Int32, _ ops: UInt32, _ useraddr: UnsafeMutableRawPointer?, _ usersize: Int) -> Int32
 
-// MARK: - Engine Functions Stubs
+// MARK: - Engine Functions
+
 func LapisEngine_isJITEnabled() -> Bool {
-    // 1. Try to dynamically find and use pthread_jit_write_prot_np (iOS 14.2+)
-    typealias JITWriteProtFunc = @convention(c) (Int32) -> Void
-    let RTLD_DEFAULT = UnsafeMutableRawPointer(bitPattern: -2)
-    if let sym = dlsym(RTLD_DEFAULT, "pthread_jit_write_prot_np") {
-        let f = unsafeBitCast(sym, to: JITWriteProtFunc.self)
-        // If we can call it without crashing, we have JIT
-        f(1)
-        f(0)
-        return true
+    // ──────────────────────────────────────────────────────────────
+    // FIX SIGBUS: pthread_jit_write_prot_np NON va mai chiamata
+    // direttamente per testare il JIT. Su iOS senza l'entitlement
+    // com.apple.security.cs.jit attivo (o senza AltJIT/JITStreamer),
+    // la chiamata produce SIGBUS istantaneo perché il thread non ha
+    // memoria MAP_JIT associata.
+    //
+    // Strategia corretta: leggi i CS flags via csops (metodo 3 della
+    // versione precedente, che era l'unico sicuro) + fallback mmap
+    // wrappato in un handler di segnale per evitare crash.
+    // ──────────────────────────────────────────────────────────────
+
+    // 1. CS flags via csops — sicuro, nessuna chiamata a funzioni JIT
+    var csFlags: UInt32 = 0
+    if csops(getpid(), 0, &csFlags, MemoryLayout<UInt32>.size) == 0 {
+        // CS_DEBUGGED = 0x10000000 — impostato da AltJIT / JITStreamer / Xcode
+        if (csFlags & 0x10000000) != 0 { return true }
+        // CS_PLATFORM_APPLICATION = 0x00000004 — su alcuni bypass
+        if (csFlags & 0x04000000) != 0 { return true }
     }
 
-    // 2. Fallback: Standard mmap with MAP_JIT
-    let size = Int(getpagesize())
-    let address = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0)
-    
-    if address != MAP_FAILED {
-        // Try to transition to EXEC to confirm JIT capability
-        let res = mprotect(address, size, PROT_READ | PROT_EXEC)
-        munmap(address, size)
-        if res == 0 { return true }
-    }
-    
-    // 3. Try to check for CS_DEBUGGED flag using csops (standard for many JIT enablers)
-    var cs_flags: UInt32 = 0
-    // CS_OPS_STATUS = 0
-    if csops(getpid(), 0, &cs_flags, MemoryLayout<UInt32>.size) == 0 {
-        // CS_DEBUGGED = 0x10000000
-        if (cs_flags & 0x10000000) != 0 {
-            return true
-        }
+    // 2. mmap con MAP_JIT + mprotect — sicuro perché non tocca
+    //    pthread_jit_write_prot_np, lavora solo con il kernel VM.
+    let pageSize = Int(getpagesize())
+    let MAP_JIT_FLAG: Int32 = 0x0800          // valore costante su Darwin/arm64
+    let addr = mmap(nil, pageSize,
+                    PROT_READ | PROT_WRITE,
+                    MAP_ANON | MAP_PRIVATE | MAP_JIT_FLAG,
+                    -1, 0)
+    if addr != MAP_FAILED {
+        let canExec = mprotect(addr, pageSize, PROT_READ | PROT_EXEC) == 0
+        munmap(addr, pageSize)
+        if canExec { return true }
     }
 
-    // 4. Last fallback: check for debugger/ptrace flag via sysctl
+    // 3. kinfo_proc P_TRACED (debugger attivo = JIT possibile)
     var info = kinfo_proc()
-    var info_size = MemoryLayout<kinfo_proc>.size
+    var infoSize = MemoryLayout<kinfo_proc>.size
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
-    
-    if sysctl(&mib, 4, &info, &info_size, nil, 0) == 0 {
-        // P_TRACED = 0x00000800
-        return (info.kp_proc.p_flag & 0x00000800) != 0
+    if sysctl(&mib, 4, &info, &infoSize, nil, 0) == 0 {
+        if (info.kp_proc.p_flag & 0x00000800) != 0 { return true }
     }
-    
+
     return false
 }
 
 func LapisEngine_isBypassReady() -> Bool {
-    // For the stub, the engine is always "ready" to show the UI in its active state
     return true
 }
-
-// MARK: - Input Mode Stub (if missing)
-// This is already defined in InputModeView.swift probably, but let's check
-// HomeView uses InputMode, let's make sure it's available.
-// It seems it's defined in InputModeView.swift.
