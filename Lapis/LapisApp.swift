@@ -71,10 +71,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
-        // Installa i crash handler il prima possibile
-        installCrashHandlers()
-        writeCrashLog("── App avviata ──")
-
+        // DISATTIVATO: I crash handler personalizzati vanno in conflitto con la JVM di Java 17.
+        // Lasciamo che la JVM gestisca i propri segnali (SIGSEGV, SIGBUS) per il JIT.
+        // installCrashHandlers()
+        
         createDirectories()
         appState.loadInstalledVersions()
 
