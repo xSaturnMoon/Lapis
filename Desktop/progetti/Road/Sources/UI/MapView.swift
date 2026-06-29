@@ -180,11 +180,7 @@ struct MapView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(.white.opacity(0.2), lineWidth: 0.5)
-            )
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14))
             .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     isSearchActive = true
@@ -384,12 +380,8 @@ struct MapView: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(.white.opacity(0.2), lineWidth: 0.5)
-                )
         }
+        .glassEffect(.regular.interactive(), in: Circle())
     }
 
     // MARK: - Search Logic

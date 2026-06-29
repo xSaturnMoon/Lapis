@@ -1,0 +1,53 @@
+name: AppleDesk
+options:
+  bundleIdPrefix: com.appledesk
+  deploymentTarget:
+    iPadOS: "26.0"
+  xcodeVersion: "16.3"
+  generateEmptyDirectories: true
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "2"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    SWIFT_STRICT_CONCURRENCY: complete
+    SKIP_INSTALL: NO
+    STRIP_SWIFT_SYMBOLS: NO
+    ONLY_ACTIVE_ARCH: NO
+
+targets:
+  AppleDesk:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - AppleDesk
+    info:
+      path: AppleDesk/Info.plist
+      properties:
+        CFBundleDisplayName: AppleDesk
+        CFBundleName: AppleDesk
+        CFBundleIdentifier: com.appledesk.app
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0"
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        UIRequiresFullScreen: true
+        NSLocationWhenInUseUsageDescription: "AppleDesk usa la posizione per mostrare il meteo locale."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.appledesk.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: AppleDesk/Info.plist
+        SKIP_INSTALL: NO
+        STRIP_SWIFT_SYMBOLS: NO
+        ONLY_ACTIVE_ARCH: NO
